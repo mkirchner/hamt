@@ -1,5 +1,3 @@
-TARGET_EXEC ?= test_hamt
-
 BUILD_DIR ?= ./build
 SRC_DIRS ?= ./src ./test ./include
 
@@ -10,10 +8,14 @@ DEPS := $(OBJS:.o=.d)
 INC_DIRS := $(shell find $(SRC_DIRS) -type d)
 INC_FLAGS := $(addprefix -I,$(INC_DIRS))
 
-CPPFLAGS ?= $(INC_FLAGS) -MMD -MP
+CPPFLAGS ?= $(INC_FLAGS) -MMD -MP -g -O0
 
-$(BUILD_DIR)/$(TARGET_EXEC): $(OBJS)
-	$(CC) $(OBJS) -o $@ $(LDFLAGS)
+# tests source the C file; filter object file to avoid
+# duplicate symbols for the linker
+TEST_OBJS = $(filter-out %/hamt.c.o,$(OBJS))
+
+$(BUILD_DIR)/test/test_hamt: $(TEST_OBJS)
+	$(CC) $(TEST_OBJS) -o $@ $(LDFLAGS)
 
 # c source
 $(BUILD_DIR)/%.c.o: %.c

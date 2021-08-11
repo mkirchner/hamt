@@ -86,6 +86,42 @@ static char *test_murmur3_x86_32()
     return 0;
 }
 
+static char *test_dot()
+{
+    int vals[3] = {21, 42, 84};
+    HamtNode* leaf21 = (HamtNode*) calloc(sizeof(HamtNode), 1);
+    leaf21->l.val = &vals[0];
+    HamtNode* leaf42 = (HamtNode*) calloc(sizeof(HamtNode), 1);
+    leaf42->l.val = &vals[1];
+    HamtNode* leaf84 = (HamtNode*) calloc(sizeof(HamtNode), 1);
+    leaf84->l.val = &vals[2];
+
+    HamtNode* internal1 = (HamtNode*) calloc(sizeof(HamtNode), 1);
+    internal1->i.bitmap = (1 << 16 | 1 << 27);
+    internal1->i.sub = calloc(sizeof(HamtNode*), 2);
+    internal1->i.sub[0] = tag(leaf21);
+    internal1->i.sub[1] = tag(leaf42);
+
+    HamtNode* internal0 = (HamtNode*) calloc(sizeof(HamtNode), 1);
+    internal0->i.bitmap = (1 << 16 | 1 << 8);
+    internal0->i.sub = calloc(sizeof(HamtNode*), 2);
+    internal0->i.sub[0] = internal1;
+    internal0->i.sub[1] = tag(leaf84);
+
+    HAMT* hamt = (HAMT*) malloc(sizeof(HAMT));
+    hamt->root = internal0;
+
+    FILE* f = fopen("test_dot.dot", "w");
+    hamt_to_dot(hamt, f);
+    fclose(f);
+    free(leaf21);
+    free(leaf42);
+    free(internal1);
+    free(internal0);
+    free(hamt);
+    return 0;
+}
+
 int tests_run = 0;
 
 static char *test_suite()
@@ -94,6 +130,7 @@ static char *test_suite()
     mu_run_test(test_compact_index);
     mu_run_test(test_tagging);
     mu_run_test(test_murmur3_x86_32);
+    // mu_run_test(test_dot);
     // add more tests here
     return 0;
 }
