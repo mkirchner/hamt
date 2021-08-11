@@ -61,26 +61,26 @@ static char *test_tagging()
 static char *test_murmur3_x86_32()
 {
     printf(". testing Murmur3 (x86, 32bit)\n");
-    /* test vectors from https://stackoverflow.com/questions/14747343/murmurhash3-test-vectors */
+    /* test vectors from
+     * https://stackoverflow.com/questions/14747343/murmurhash3-test-vectors */
     struct {
-        char* key;
+        char *key;
         size_t len;
         uint32_t seed;
         uint32_t expected;
     } test_cases[7] = {
-        { NULL, 0, 0, 0},
-        { NULL, 0, 1, 0x514e28b7},
-        { NULL, 0, 0xffffffff, 0x81f16f39},
-        { "\x00\x00\x00\x00", 4, 0, 0x2362f9de},
-        { "\xff\xff\xff\xff", 4, 0, 0x76293b50},
-        { "\x21\x43\x65\x87", 4, 0, 0xf55b516b},
-        { "\x21\x43\x65\x87", 4, 0x5082edee, 0x2362f9de},
+        {NULL, 0, 0, 0},
+        {NULL, 0, 1, 0x514e28b7},
+        {NULL, 0, 0xffffffff, 0x81f16f39},
+        {"\x00\x00\x00\x00", 4, 0, 0x2362f9de},
+        {"\xff\xff\xff\xff", 4, 0, 0x76293b50},
+        {"\x21\x43\x65\x87", 4, 0, 0xf55b516b},
+        {"\x21\x43\x65\x87", 4, 0x5082edee, 0x2362f9de},
     };
 
     for (size_t i = 0; i < 7; ++i) {
-        uint32_t hash = murmur3_32((uint8_t*) test_cases[i].key,
-                test_cases[i].len,
-                test_cases[i].seed);
+        uint32_t hash = murmur3_32((uint8_t *)test_cases[i].key,
+                                   test_cases[i].len, test_cases[i].seed);
         mu_assert(hash == test_cases[i].expected, "Wrong hash");
     }
     return 0;
@@ -89,29 +89,29 @@ static char *test_murmur3_x86_32()
 static char *test_dot()
 {
     int vals[3] = {21, 42, 84};
-    HamtNode* leaf21 = (HamtNode*) calloc(sizeof(HamtNode), 1);
+    HamtNode *leaf21 = (HamtNode *)calloc(sizeof(HamtNode), 1);
     leaf21->l.val = &vals[0];
-    HamtNode* leaf42 = (HamtNode*) calloc(sizeof(HamtNode), 1);
+    HamtNode *leaf42 = (HamtNode *)calloc(sizeof(HamtNode), 1);
     leaf42->l.val = &vals[1];
-    HamtNode* leaf84 = (HamtNode*) calloc(sizeof(HamtNode), 1);
+    HamtNode *leaf84 = (HamtNode *)calloc(sizeof(HamtNode), 1);
     leaf84->l.val = &vals[2];
 
-    HamtNode* internal1 = (HamtNode*) calloc(sizeof(HamtNode), 1);
+    HamtNode *internal1 = (HamtNode *)calloc(sizeof(HamtNode), 1);
     internal1->i.bitmap = (1 << 16 | 1 << 27);
-    internal1->i.sub = calloc(sizeof(HamtNode*), 2);
+    internal1->i.sub = calloc(sizeof(HamtNode *), 2);
     internal1->i.sub[0] = tag(leaf21);
     internal1->i.sub[1] = tag(leaf42);
 
-    HamtNode* internal0 = (HamtNode*) calloc(sizeof(HamtNode), 1);
+    HamtNode *internal0 = (HamtNode *)calloc(sizeof(HamtNode), 1);
     internal0->i.bitmap = (1 << 16 | 1 << 8);
-    internal0->i.sub = calloc(sizeof(HamtNode*), 2);
+    internal0->i.sub = calloc(sizeof(HamtNode *), 2);
     internal0->i.sub[0] = internal1;
     internal0->i.sub[1] = tag(leaf84);
 
-    HAMT* hamt = (HAMT*) malloc(sizeof(HAMT));
+    HAMT *hamt = (HAMT *)malloc(sizeof(HAMT));
     hamt->root = internal0;
 
-    FILE* f = fopen("test_dot.dot", "w");
+    FILE *f = fopen("test_dot.dot", "w");
     hamt_to_dot(hamt, f);
     fclose(f);
     free(leaf21);

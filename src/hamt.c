@@ -44,7 +44,8 @@ static int to_dot_internal(const HamtINode *i, FILE *f)
     }
     fprintf(f, "}}\"];\n");
     for (int k = (n - 1); k >= 0; --k) {
-        fprintf(f, "struct%p:f%p:c -> struct%p\n", i, untag(i->sub[k]), untag(i->sub[k]));
+        fprintf(f, "struct%p:f%p:c -> struct%p\n", i, untag(i->sub[k]),
+                untag(i->sub[k]));
     }
     return n;
 }
