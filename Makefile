@@ -14,6 +14,10 @@ CPPFLAGS ?= $(INC_FLAGS) -MMD -MP -g -O0
 # duplicate symbols for the linker
 TEST_OBJS = $(filter-out %/hamt.c.o,$(OBJS))
 
+test: $(BUILD_DIR)/test/test_hamt
+	$(BUILD_DIR)/test/test_hamt
+
+
 $(BUILD_DIR)/test/test_hamt: $(TEST_OBJS)
 	$(CC) $(TEST_OBJS) -o $@ $(LDFLAGS)
 
