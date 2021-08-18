@@ -6,34 +6,35 @@
 #include <stdio.h>
 
 struct HamtNode;
-typedef struct HamtNode HamtNode;
 
-struct HamtINode {
-  uint32_t bitmap;       /* sparse->dense bitmap */
-  struct HamtNode **sub; /* dense array of children */
-};
-typedef struct HamtINode HamtINode;
-
-struct HamtLNode {
-  void *val; /* pointer to value */
-};
-typedef struct HamtLNode HamtLNode;
-
-struct HamtNode {
+typedef struct HamtNode {
   union {
-    HamtINode i; /* internal */
-    HamtLNode l; /* leaf */
-  };
-};
+    struct {
+      void *value;
+      void *key;
+    } kv;
+    struct {
+      struct HamtNode *ptr;
+      uint32_t index;
+    } table;
+  } as;
+} HamtNode;
+
+typedef int (*HamtCmpEqFn)(const void* lhs, const void* rhs, size_t len);
 
 typedef struct HAMT {
-  HamtNode *root;
+  HamtNode root;
+  HamtCmpEqFn cmp_eq;
+  uint32_t seed;
   size_t size;
 } HAMT;
 
-void *hamt_get(const HAMT *trie, uint32_t key);
-int hamt_set(HAMT *trie, uint32_t key, void *value);
-void *hamt_delete(HAMT *trie, uint32_t key);
-void hamt_to_dot(const HAMT *hamt, FILE *f);
+
+HAMT* hamt_create(HamtCmpEqFn cmp_eq);
+void hamt_delete(HAMT*);
+
+const void *hamt_get(const HAMT *trie, void *key, size_t keylen);
+int hamt_set(HAMT *trie, void *key, size_t keylen, void *value, size_t len);
+void *hamt_remove(HAMT *trie, void *key, size_t keylen);
 
 #endif /* HAMT_H */

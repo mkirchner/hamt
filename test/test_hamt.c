@@ -49,12 +49,12 @@ static char *test_tagging()
     printf(". testing pointer tagging\n");
     HamtNode n;
     HamtNode *p = &n;
-    mu_assert(!is_leaf(p), "Raw pointer must not be tagged");
-    p = tag(p);
-    mu_assert(is_leaf(p),
+    mu_assert(!is_value(p), "Raw pointer must not be tagged");
+    p = tagged(p);
+    mu_assert(is_value(p),
               "Tagged pointer should be detected as tagged pointer");
-    p = untag(p);
-    mu_assert(!is_leaf(p), "Untagging must return a raw pointer");
+    p = untagged(p);
+    mu_assert(!is_value(p), "Untagging must return a raw pointer");
     return 0;
 }
 
@@ -86,39 +86,122 @@ static char *test_murmur3_x86_32()
     return 0;
 }
 
-static char *test_dot()
+static int my_strncmp(const void *lhs, const void *rhs, size_t len)
 {
-    int vals[3] = {21, 42, 84};
-    HamtNode *leaf21 = (HamtNode *)calloc(sizeof(HamtNode), 1);
-    leaf21->l.val = &vals[0];
-    HamtNode *leaf42 = (HamtNode *)calloc(sizeof(HamtNode), 1);
-    leaf42->l.val = &vals[1];
-    HamtNode *leaf84 = (HamtNode *)calloc(sizeof(HamtNode), 1);
-    leaf84->l.val = &vals[2];
+    return strncmp((const char *)lhs, (const char *)rhs, len);
+}
 
-    HamtNode *internal1 = (HamtNode *)calloc(sizeof(HamtNode), 1);
-    internal1->i.bitmap = (1 << 16 | 1 << 27);
-    internal1->i.sub = calloc(sizeof(HamtNode *), 2);
-    internal1->i.sub[0] = tag(leaf21);
-    internal1->i.sub[1] = tag(leaf42);
+static void print_keys(int32_t hash)
+{
+    for (size_t i = 0; i < 6; ++i) {
+        uint32_t key = (hash >> (5 * i)) & 0x1f;
+        printf("%2d ", key);
+    }
+}
 
-    HamtNode *internal0 = (HamtNode *)calloc(sizeof(HamtNode), 1);
-    internal0->i.bitmap = (1 << 16 | 1 << 8);
-    internal0->i.sub = calloc(sizeof(HamtNode *), 2);
-    internal0->i.sub[0] = internal1;
-    internal0->i.sub[1] = tag(leaf84);
+static char *test_search()
+{
+    printf(". testing search\n");
+    /* Data
+    "0" -> d271c07f : 11 01001 00111 00011 10000 00011 11111  [ 31  3 16  3  7
+    9 ] "2" -> 0129e217 : 00 00000 10010 10011 11000 10000 10111  [ 23 16 24 19
+    18  0 ] "4" -> e131cc88 : 11 10000 10011 00011 10011 00100 01000  [  8  4 19
+    3 19 16 ] "7" -> 23ea8628 : 00 10001 11110 10101 00001 10001 01000  [  8 17
+    1 21 30 17 ] "8" -> bd920017 : 10 11110 11001 00100 00000 00000 10111  [ 23
+    0  0  4 25 30 ]
+    */
 
-    HAMT *hamt = (HAMT *)malloc(sizeof(HAMT));
-    hamt->root = internal0;
+    char keys[] = "02478c";
+    char buf[38];
+    for (size_t i = 0; i < 6; ++i) {
+        uint32_t hash = murmur3_32((uint8_t *)&keys[i], 1, 0);
+        printf("    %c -> %08x : %s [ ", keys[i], hash, i2b(hash, buf));
+        print_keys(hash);
+        printf("]\n");
+    }
 
-    FILE *f = fopen("test_dot.dot", "w");
-    hamt_to_dot(hamt, f);
-    fclose(f);
-    free(leaf21);
-    free(leaf42);
-    free(internal1);
-    free(internal0);
-    free(hamt);
+    /*
+     * We're now manually building the trie corresponding to the data above:
+     *
+     * +---+---+   8+---+---+      4+---+---+
+     * |   | --+--->|   | --+------>|"4"| 4 |
+     * +---+---+  23+---+---+     17+---+---+
+     *              |   | --+--+    |"7"| 7 |
+     *            31+---+---+  |    +---+---+
+     *              |"0"| 0 |  |             
+     *              +---+---+  |   0+---+---+
+     *                         +--->|"8"| 8 |
+     *                            16+---+---+
+     *                              |"2"| 2 |
+     *                              +---+---+
+     *
+     * Note that the keys and values are actually pointers to the keys and
+     * values shown here for brevity.
+     * We're also not adding "c" as a key in order to be able to test
+     * for a SEARCH_FAIL_KEYMISMATCH case.
+     */
+
+    int values[] = {0, 2, 4, 7, 8};
+
+    HamtNode *t_8 = (HamtNode *)calloc(sizeof(HamtNode), 2);
+    t_8[0].as.kv.key = &keys[2];
+    t_8[0].as.kv.value = tagged(&values[2]);
+    t_8[1].as.kv.key = &keys[3];
+    t_8[1].as.kv.value = tagged(&values[3]);
+
+    HamtNode *t_23 = (HamtNode *)calloc(sizeof(HamtNode), 2);
+    t_23[0].as.kv.key = &keys[4];
+    t_23[0].as.kv.value = tagged(&values[4]);
+    t_23[1].as.kv.key = &keys[1];
+    t_23[1].as.kv.value = tagged(&values[1]);
+
+    HamtNode *t_root = (HamtNode *)calloc(sizeof(HamtNode), 3);
+    t_root[0].as.table.index = (1 << 4) | (1 << 17);
+    t_root[0].as.table.ptr = t_8;
+    t_root[1].as.table.index = (1 << 0) | (1 << 16);
+    t_root[1].as.table.ptr = t_23;
+    t_root[2].as.kv.key = &keys[0];
+    t_root[2].as.kv.value = tagged(&values[0]);
+
+    HAMT t;
+    t.cmp_eq = my_strncmp;
+    t.seed = 0;
+    t.size = 5;
+    t.root.as.table.index = (1 << 8) | (1 << 23) | (1 << 31);
+    t.root.as.table.ptr = t_root;
+
+    struct {
+        char *key;
+        SearchStatus expected_status;
+        int expected_value;
+    } test_cases[10] = {
+        {"0", SEARCH_SUCCESS, 0},       {"1", SEARCH_FAIL_NOTFOUND, 0},
+        {"2", SEARCH_SUCCESS, 2},       {"3", SEARCH_FAIL_NOTFOUND, 0},
+        {"4", SEARCH_SUCCESS, 4},       {"5", SEARCH_FAIL_NOTFOUND, 0},
+        {"6", SEARCH_FAIL_NOTFOUND, 0}, {"7", SEARCH_SUCCESS, 7},
+        {"8", SEARCH_SUCCESS, 8},       {"c", SEARCH_FAIL_KEYMISMATCH, 0}};
+
+    for (size_t i = 0; i < 10; ++i) {
+        uint32_t hash = murmur3_32((uint8_t *)test_cases[i].key, 1, 0);
+        SearchResult sr =
+            search(&t.root, hash, test_cases[i].key, 1, 0, my_strncmp);
+        mu_assert(sr.status == test_cases[i].expected_status,
+                  "Unexpected search result status");
+        if (test_cases[i].expected_status == SEARCH_SUCCESS) {
+            /* test key */
+            mu_assert(0 == my_strncmp(test_cases[i].key,
+                                      (char *)sr.value->as.kv.key, 1),
+                      "Successful search returns non-matching key");
+            /* test value */
+            mu_assert(test_cases[i].expected_value ==
+                          *(int *)untagged(sr.value->as.kv.value),
+                      "Successful search returns wrong value");
+        }
+    }
+
+    free(t_root);
+    free(t_23);
+    free(t_8);
     return 0;
 }
 
@@ -130,7 +213,7 @@ static char *test_suite()
     mu_run_test(test_compact_index);
     mu_run_test(test_tagging);
     mu_run_test(test_murmur3_x86_32);
-    // mu_run_test(test_dot);
+    mu_run_test(test_search);
     // add more tests here
     return 0;
 }
@@ -142,7 +225,7 @@ int main()
     if (result != 0) {
         printf("%s\n", result);
     } else {
-        printf("All tests passed");
+        printf("All tests passed.\n");
     }
     printf("Tests run: %d\n", tests_run);
     return result != 0;
