@@ -30,11 +30,11 @@ typedef struct HAMT {
 } HAMT;
 
 
-HAMT* hamt_create(HamtCmpEqFn cmp_eq);
+HAMT* hamt_create(HamtCmpEqFn cmp_eq, uint32_t seed);
 void hamt_delete(HAMT*);
 
 const void *hamt_get(const HAMT *trie, void *key, size_t keylen);
-int hamt_set(HAMT *trie, void *key, size_t keylen, void *value, size_t len);
+int hamt_set(HAMT *trie, void *key, size_t keylen, void *value);
 void *hamt_remove(HAMT *trie, void *key, size_t keylen);
 
 #endif /* HAMT_H */
