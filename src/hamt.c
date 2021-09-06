@@ -7,19 +7,67 @@
 #include <string.h>
 
 #include "mem.h"
-#include "murmur3.h"
 
 /* Pointer tagging */
 #define HAMT_TAG_MASK 0x3 /* last two bits */
 #define HAMT_TAG_VALUE 0x1
 
+/* Node data structure */
+typedef struct HamtNode {
+    union {
+        struct {
+            void *value;
+            void *key;
+        } kv;
+        struct {
+            struct HamtNode *ptr;
+            uint32_t index;
+        } table;
+    } as;
+} HamtNode;
+
+typedef struct Hash {
+    const void *key;
+    HamtKeyHashFn hash_fn;
+    uint32_t hash;
+    size_t depth;
+    size_t shift;
+} Hash;
+
+/* debugging */
+
+#define DEBUG 0
+#define trace(fmt, ...)                                                        \
+    do {                                                                       \
+        if (DEBUG)                                                             \
+            fprintf(stderr, "%s:%d:%s(): " fmt, __FILE__, __LINE__, __func__,  \
+                    __VA_ARGS__);                                              \
+    } while (0)
+static void debug_print_string(size_t ix, const HamtNode *node, size_t depth);
+
+static inline Hash hash_step(const Hash h)
+{
+    Hash hash = {.key = h.key,
+                 .hash_fn = h.hash_fn,
+                 .hash = h.hash,
+                 .depth = h.depth + 1,
+                 .shift = h.shift + 5};
+    if (hash.shift > 30) {
+        hash.hash = hash.hash_fn(hash.key, hash.depth / 5);
+        hash.shift = 0;
+    }
+    return hash;
+}
+
+static inline uint32_t hash_get_hash(Hash *h) { return h->hash; }
+
 #define tagged(__p) (HamtNode *)((uintptr_t)__p | HAMT_TAG_VALUE)
 #define untagged(__p) (HamtNode *)((uintptr_t)__p & ~HAMT_TAG_MASK)
 #define is_value(__p) (((uintptr_t)__p & HAMT_TAG_MASK) == HAMT_TAG_VALUE)
 
-static inline uint32_t get_index(uint32_t hash, size_t depth)
+static inline uint32_t hash_get_index(const Hash *h)
 {
-    return (hash >> (depth * 5)) & 0x1f; /* mask last 5 bits */
+    return (h->hash >> h->shift) & 0x1f;
 }
 
 static int get_popcount(uint32_t n) { return __builtin_popcount(n); }
@@ -29,13 +77,13 @@ static int get_pos(uint32_t sparse_index, uint32_t bitmap)
     return get_popcount(bitmap & ((1 << sparse_index) - 1));
 }
 
-HAMT *hamt_create(HamtCmpEqFn cmp_eq, uint32_t seed)
+HAMT *hamt_create(HamtKeyHashFn key_hash, HamtCmpFn key_cmp)
 {
     HAMT *trie = mem_alloc(sizeof(HAMT));
-    memset(&trie->root, 0, sizeof(HamtNode));
-    trie->cmp_eq = cmp_eq;
-    trie->seed = seed;
-    trie->size = 0;
+    trie->root = mem_alloc(sizeof(HamtNode));
+    memset(trie->root, 0, sizeof(HamtNode));
+    trie->key_hash = key_hash;
+    trie->key_cmp = key_cmp;
     return trie;
 }
 
@@ -49,7 +97,7 @@ typedef struct SearchResult {
     SearchStatus status;
     HamtNode *anchor;
     HamtNode *value;
-    size_t depth;
+    Hash hash;
 } SearchResult;
 
 static inline bool has_index(const HamtNode *anchor, size_t index)
@@ -59,54 +107,65 @@ static inline bool has_index(const HamtNode *anchor, size_t index)
     return anchor->as.table.index & (1 << index);
 }
 
-static SearchResult search(const HamtNode *anchor, uint32_t hash,
-                           const void *key, size_t keylen, size_t depth,
-                           HamtCmpEqFn cmp_eq)
+static SearchResult search(HamtNode *anchor, Hash hash, HamtCmpFn cmp_eq,
+                           const void *key)
 {
     assert(!is_value(anchor->as.kv.value) &&
            "Invariant: search requires an internal node");
-    assert(depth <= 6 && "Rehashing not supported yet"); /* FIXME */
-
+#if DEBUG
+    char buf[33];
+    trace("search (->%s)@%p: depth=%lu, shift=%lu, hash=%s\n", (char *)key,
+          anchor, hash.depth, hash.shift, i2b(hash.hash, buf));
+    trace("    index: %s\n", i2b(anchor->as.table.index, buf));
+#endif
     /* determine the expected index in table */
-    uint32_t expected_index = get_index(hash, depth);
-    // printf("depth: %d, expected_index: %lu\n", depth, expected_index);
+    uint32_t expected_index = hash_get_index(&hash);
     /* check if the expected index is set */
     if (has_index(anchor, expected_index)) {
         /* if yes, get the compact index to address the array */
         int pos = get_pos(expected_index, anchor->as.table.index);
+        trace("    Found index %u, pos %i, at depth %lu\n", expected_index, pos,
+              hash.depth);
 
         /* index into the table and check what type of entry we're looking at */
         HamtNode *next = &anchor->as.table.ptr[pos];
         if (is_value(next->as.kv.value)) {
-            /* For key/value entries, we have two options:
-             *   1. The keys match. Return the anchor pointer and the value
-             * pointer.
-             *   2. The keys do not match. Return the anchor, set value to NULL.
-             */
-            if ((*cmp_eq)(key, next->as.kv.key, keylen) == 0) {
+            if ((*cmp_eq)(key, next->as.kv.key) == 0) {
+                trace("    Key match: %s == %s (%s)\n", (char *)key,
+                      (char *)next->as.kv.key,
+                      (char *)untagged(next->as.kv.value));
                 /* keys match */
-                SearchResult result = {
-                    .status = SEARCH_SUCCESS, .anchor = anchor, .value = next};
+                SearchResult result = {.status = SEARCH_SUCCESS,
+                                       .anchor = anchor,
+                                       .value = next,
+                                       .hash = hash};
                 return result;
             }
             /* not found: same hash but different key */
+            trace("    Key mismatch: %s != %s\n", (char *)key,
+                  (char *)next->as.kv.key);
             SearchResult result = {.status = SEARCH_FAIL_KEYMISMATCH,
                                    .anchor = anchor,
                                    .value = next,
-                                   .depth = depth};
+                                   .hash = hash};
             return result;
         } else {
             /* For table entries, recurse to the next level */
             assert(next->as.table.ptr != NULL &&
                    "invariant: table ptrs must not be NULL");
-            return search(next, hash, key, keylen, depth + 1, cmp_eq);
+            return search(next, hash_step(hash), cmp_eq, key);
         }
     }
+#if DEBUG
+    trace("    Failed to find index %u, at depth %lu\n", expected_index,
+          hash.depth);
+    debug_print_string(0, anchor, 4);
+#endif
     /* expected index is not set, terminate search */
     SearchResult result = {.status = SEARCH_FAIL_NOTFOUND,
                            .anchor = anchor,
                            .value = NULL,
-                           .depth = depth};
+                           .hash = hash};
     return result;
 }
 
@@ -115,18 +174,16 @@ HamtNode *mem_allocate_table(size_t size)
     return (HamtNode *)mem_alloc(size * sizeof(HamtNode));
 }
 
-void mem_free_table(HamtNode* ptr, size_t size)
+void mem_free_table(HamtNode *ptr, size_t size)
 {
-    /* this will eventually allow construction of a free list */
     mem_free(ptr);
 }
 
-static const HamtNode *insert_kv(HamtNode *anchor, uint32_t hash, size_t depth,
-                                 void *key, size_t keylen, void *value)
+static const HamtNode *insert_kv(HamtNode *anchor, Hash hash, void *key,
+                                 void *value)
 {
-    assert(depth < 7 && "Re-hashing not supported yet");
     /* calculate position in new table */
-    uint32_t pos = get_index(hash, depth);
+    uint32_t pos = hash_get_index(&hash);
     uint32_t new_index = anchor->as.table.index | (1 << pos);
     int compact_index = get_pos(pos, new_index);
     /* create new table */
@@ -140,7 +197,8 @@ static const HamtNode *insert_kv(HamtNode *anchor, uint32_t hash, size_t depth,
         /* note: this works since (cur_size - compact_index) == 0 for cases
          * where we're adding the new k/v pair at the end (i.e. memcpy(a, b, 0)
          * is a nop) */
-        memcpy(&new_table[compact_index + 1], &anchor->as.table.ptr[compact_index],
+        memcpy(&new_table[compact_index + 1],
+               &anchor->as.table.ptr[compact_index],
                (cur_size - compact_index) * sizeof(HamtNode));
     }
     /* add new k/v pair */
@@ -154,42 +212,42 @@ static const HamtNode *insert_kv(HamtNode *anchor, uint32_t hash, size_t depth,
     return &new_table[compact_index];
 }
 
-static const HamtNode *insert_table(HamtNode *anchor, uint32_t hash, int seed,
-                                    size_t depth, void *key, size_t keylen,
+static const HamtNode *insert_table(HamtNode *anchor, Hash hash, void *key,
                                     void *value)
 {
-    /* Collect everything we know about the existing value */ 
-    void* x_key = anchor->as.kv.key;
-    void* x_value = anchor->as.kv.value; /* tagged (!) value ptr */
-    uint32_t x_hash = murmur3_32((uint8_t*)x_key, keylen, seed);
-
+    trace("Insert table for %s\n", (char *)key);
+    /* Collect everything we know about the existing value */
+    Hash x_hash = {.key = anchor->as.kv.key,
+                   .hash_fn = hash.hash_fn,
+                   .hash = hash.hash_fn(anchor->as.kv.key, hash.depth / 5),
+                   .depth = hash.depth,
+                   .shift = hash.shift};
+    void *x_value = anchor->as.kv.value; /* tagged (!) value ptr */
     /* increase depth until the hashes diverge, building a list
      * of tables along the way */
-    depth++;
-    assert(depth<7 && "Rehashing not supported yet"); /* FIXME */
-    uint32_t x_next_index = get_index(x_hash, depth);
-    uint32_t next_index = get_index(hash, depth);
+    Hash next_hash = hash_step(hash);
+    Hash x_next_hash = hash_step(x_hash);
+    uint32_t next_index = hash_get_index(&next_hash);
+    uint32_t x_next_index = hash_get_index(&x_next_hash);
     while (x_next_index == next_index) {
         anchor->as.table.ptr = mem_allocate_table(1);
         anchor->as.table.index = (1 << next_index);
-        depth++;
-        assert(depth<7 && "Rehashing not supported yet");
-        x_next_index = get_index(x_hash, depth);
-        next_index = get_index(hash, depth);
+        next_hash = hash_step(next_hash);
+        x_next_hash = hash_step(x_next_hash);
+        next_index = hash_get_index(&next_hash);
+        x_next_index = hash_get_index(&x_next_hash);
         anchor = anchor->as.table.ptr;
     }
     /* the hashes are different, let's allocate a table with two
      * entries to store the existing and new values */
     anchor->as.table.ptr = mem_allocate_table(2);
     anchor->as.table.index = (1 << next_index) | (1 << x_next_index);
-    printf("next_index=%d <-> x_next_index=%d\n", next_index, x_next_index);
-    /* determine the proper position in the allocated table */ 
+    /* determine the proper position in the allocated table */
     int x_pos = get_pos(x_next_index, anchor->as.table.index);
     int pos = get_pos(next_index, anchor->as.table.index);
-    printf("pos=%d <-> x_pos=%d\n", pos, x_pos);
     /* fill in the existing value; no need to tag the value pointer
      * since it is already tagged. */
-    anchor->as.table.ptr[x_pos].as.kv.key = x_key;
+    anchor->as.table.ptr[x_pos].as.kv.key = (void *)x_hash.key;
     anchor->as.table.ptr[x_pos].as.kv.value = x_value;
     /* fill in the new key/value pair, tagging the pointer to the
      * new value to mark it as a value ptr */
@@ -199,48 +257,62 @@ static const HamtNode *insert_table(HamtNode *anchor, uint32_t hash, int seed,
     return &anchor->as.table.ptr[pos];
 }
 
-static const HamtNode *set(const HAMT *trie, void *key, size_t keylen,
-                           void *value)
+static const HamtNode *set(HamtNode *anchor, HamtKeyHashFn hash_fn,
+                           HamtCmpFn cmp_fn, void *key, void *value)
 {
-    uint32_t hash = murmur3_32((uint8_t *)key, keylen, trie->seed);
-    SearchResult sr = search(&trie->root, hash, key, keylen, 0, trie->cmp_eq);
+    Hash hash = {.key = key,
+                 .hash_fn = hash_fn,
+                 .hash = hash_fn(key, 0),
+                 .depth = 0,
+                 .shift = 0};
+    SearchResult sr = search(anchor, hash, cmp_fn, key);
+    if (hash.depth > 10) {
+        printf("key = %s has depth %lu\n", (char *)key, sr.hash.depth);
+    }
     switch (sr.status) {
     case SEARCH_SUCCESS:
-        /* FIXME: reconsider this policy */
         sr.value->as.kv.value = tagged(value);
         return sr.value;
     case SEARCH_FAIL_NOTFOUND:
-        return insert_kv(sr.anchor, hash, sr.depth, key, keylen, value);
+        return insert_kv(sr.anchor, sr.hash, key, value);
     case SEARCH_FAIL_KEYMISMATCH:
-        return insert_table(sr.value, hash, trie->seed, sr.depth, key, keylen, value);
+        return insert_table(sr.value, sr.hash, key, value);
     }
 }
 
-const void *hamt_get(const HAMT *trie, void *key, size_t keylen)
+const void *hamt_get(const HAMT *trie, void *key)
 {
-    uint32_t hash = murmur3_32((uint8_t *)key, keylen, trie->seed);
-    SearchResult sr = search(&trie->root, hash, key, keylen, 0, trie->cmp_eq);
+    Hash hash = {.key = key,
+                 .hash_fn = trie->key_hash,
+                 .hash = trie->key_hash(key, 0),
+                 .depth = 0,
+                 .shift = 0};
+    SearchResult sr = search(trie->root, hash, trie->key_cmp, key);
     if (sr.status == SEARCH_SUCCESS) {
         return untagged(sr.value->as.kv.value);
     }
     return NULL;
 }
 
-int hamt_set(HAMT *trie, void *key, size_t keylen, void *value)
+const void *hamt_set(HAMT *trie, void *key, void *value)
 {
-    // hash the key
-    uint32_t hash = murmur3_32((uint8_t *)key, keylen, trie->seed);
-    return 0;
+    const HamtNode *n =
+        set(trie->root, trie->key_hash, trie->key_cmp, key, value);
+    return n->as.kv.value;
 }
 
-void *hamt_remove(HAMT *trie, void *key, size_t keylen) { return NULL; }
+void *hamt_remove(HAMT *trie, void *key)
+{
+    assert(0 && "Not implemented yet.");
+    return NULL;
+}
 
 static void debug_print(const HamtNode *node, size_t depth)
 {
     /* print node*/
     if (!is_value(node->as.kv.value)) {
-        printf("%*s%s", (int)depth*2, "", "[ ");
-        for (size_t i = 0; i<32; ++i) {
+        printf("%*s%s", (int)depth * 2, "", "[ ");
+        for (size_t i = 0; i < 32; ++i) {
             if (node->as.table.index & (1 << i)) {
                 printf("%2lu ", i);
             }
@@ -249,13 +321,34 @@ static void debug_print(const HamtNode *node, size_t depth)
         /* print table */
         int n = get_popcount(node->as.table.index);
         for (int i = 0; i < n; ++i) {
-            debug_print(&node->as.table.ptr[i], depth+1);
+            debug_print(&node->as.table.ptr[i], depth + 1);
         }
     } else {
         /* print value */
-        printf("%*s(%c, %d)\n", (int)depth*2, "",
-                *(char*) node->as.kv.key,
-                *(int*) untagged(node->as.kv.value));
+        printf("%*s(%c, %d)\n", (int)depth * 2, "", *(char *)node->as.kv.key,
+               *(int *)untagged(node->as.kv.value));
     }
 }
 
+static void debug_print_string(size_t ix, const HamtNode *node, size_t depth)
+{
+    /* print node*/
+    if (!is_value(node->as.kv.value)) {
+        trace("%*s%lu : %s", (int)depth * 2, "", ix, "[ ");
+        for (size_t i = 0; i < 32; ++i) {
+            if (node->as.table.index & (1 << i)) {
+                printf("%2lu(%i) ", i, get_pos(i, node->as.table.index));
+            }
+        }
+        printf("%s", "]\n");
+        /* print table */
+        int n = get_popcount(node->as.table.index);
+        for (int i = 0; i < n; ++i) {
+            debug_print_string(i, &node->as.table.ptr[i], depth + 1);
+        }
+    } else {
+        /* print value */
+        trace("%*s +- (%lu): (%s, %s)\n", (int)depth * 2, "", ix,
+              (char *)node->as.kv.key, (char *)untagged(node->as.kv.value));
+    }
+}

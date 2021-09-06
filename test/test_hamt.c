@@ -86,9 +86,15 @@ static char *test_murmur3_x86_32()
     return 0;
 }
 
-static int my_strncmp(const void *lhs, const void *rhs, size_t len)
+static int my_strncmp_1(const void *lhs, const void *rhs)
 {
-    return strncmp((const char *)lhs, (const char *)rhs, len);
+    return strncmp((const char *)lhs, (const char *)rhs, 1);
+}
+
+static uint32_t my_hash_1(const void *key, const size_t _)
+{
+    /* ignore gen here */
+    return murmur3_32((uint8_t *)key, 1, 0);
 }
 
 static void print_keys(int32_t hash)
@@ -114,7 +120,7 @@ static char *test_search()
     char keys[] = "02478c";
     char buf[38];
     for (size_t i = 0; i < 6; ++i) {
-        uint32_t hash = murmur3_32((uint8_t *)&keys[i], 1, 0);
+        uint32_t hash = my_hash_1(&keys[i], 0);
         printf("    %c -> %08x : %s [ ", keys[i], hash, i2b(hash, buf));
         print_keys(hash);
         printf("]\n");
@@ -164,11 +170,9 @@ static char *test_search()
     t_root[2].as.kv.value = tagged(&values[0]);
 
     HAMT t;
-    t.cmp_eq = my_strncmp;
-    t.seed = 0;
-    t.size = 5;
-    t.root.as.table.index = (1 << 8) | (1 << 23) | (1 << 31);
-    t.root.as.table.ptr = t_root;
+    t.key_cmp = my_strncmp_1;
+    t.root->as.table.index = (1 << 8) | (1 << 23) | (1 << 31);
+    t.root->as.table.ptr = t_root;
 
     struct {
         char *key;
@@ -182,15 +186,18 @@ static char *test_search()
         {"8", SEARCH_SUCCESS, 8},       {"c", SEARCH_FAIL_KEYMISMATCH, 0}};
 
     for (size_t i = 0; i < 10; ++i) {
-        uint32_t hash = murmur3_32((uint8_t *)test_cases[i].key, 1, 0);
-        SearchResult sr =
-            search(&t.root, hash, test_cases[i].key, 1, 0, my_strncmp);
+        Hash hash = {.key = test_cases[i].key,
+                     .hash_fn = my_hash_1,
+                     .hash = my_hash_1(test_cases[i].key, 0),
+                     .depth = 0,
+                     .shift = 0};
+        SearchResult sr = search(t.root, hash, my_strncmp_1, test_cases[i].key);
         mu_assert(sr.status == test_cases[i].expected_status,
                   "Unexpected search result status");
         if (test_cases[i].expected_status == SEARCH_SUCCESS) {
             /* test key */
-            mu_assert(0 == my_strncmp(test_cases[i].key,
-                                      (char *)sr.value->as.kv.key, 1),
+            mu_assert(0 == my_strncmp_1(test_cases[i].key,
+                                        (char *)sr.value->as.kv.key),
                       "Successful search returns non-matching key");
             /* test value */
             mu_assert(test_cases[i].expected_value ==
@@ -205,37 +212,10 @@ static char *test_search()
     return 0;
 }
 
-char *test_set()
-{
-    printf(". testing set/insert\n");
-    HAMT *t = hamt_create(my_strncmp, 0);
-
-    /* example 1: no hash collisions */
-    char keys[] = "420";
-    int values[] = {4, 2, 0};
-
-    HamtNode *t_root = (HamtNode *)calloc(sizeof(HamtNode), 3);
-    t_root[0].as.kv.key = &keys[0];
-    t_root[0].as.kv.value = tagged(&values[0]);
-    t_root[1].as.kv.key = &keys[1];
-    t_root[1].as.kv.value = tagged(&values[1]);
-
-    t->root.as.table.ptr = t_root;
-    t->root.as.table.index = (1 << 23) | (1 << 8);
-
-    HamtNode *new_node = set(t, &keys[2], 1, &values[2]);
-    uint32_t hash = murmur3_32((uint8_t *)&keys[2], 1, 0);
-    SearchResult sr = search(&t->root, hash, &keys[2], 1, 0, my_strncmp);
-    mu_assert(sr.status == SEARCH_SUCCESS, "failed to find inserted value");
-    mu_assert(new_node == sr.value,
-              "Query result points to the wrong node");
-    return 0;
-}
-
 char *test_set_with_collisions()
 {
     printf(". testing set/insert w/ forced key collision\n");
-    HAMT *t = hamt_create(my_strncmp, 0);
+    HAMT *t = hamt_create(my_hash_1, my_strncmp_1);
 
     /* example 1: no hash collisions */
     char keys[] = "028";
@@ -247,16 +227,20 @@ char *test_set_with_collisions()
     t_root[1].as.kv.key = &keys[1];
     t_root[1].as.kv.value = tagged(&values[1]);
 
-    t->root.as.table.ptr = t_root;
-    t->root.as.table.index = (1 << 23) | (1 << 31);
+    t->root->as.table.ptr = t_root;
+    t->root->as.table.index = (1 << 23) | (1 << 31);
 
     /* insert value and find it again */
-    HamtNode *new_node = set(t, &keys[2], 1, &values[2]);
-    uint32_t hash = murmur3_32((uint8_t *)&keys[2], 1, 0);
-    SearchResult sr = search(&t->root, hash, &keys[2], 1, 0, my_strncmp);
+    const HamtNode *new_node =
+        set(t->root, t->key_hash, t->key_cmp, &keys[2], &values[2]);
+    Hash hash = {.key = &keys[2],
+                 .hash_fn = t->key_hash,
+                 .hash = t->key_hash(&keys[2], 0),
+                 .depth = 0,
+                 .shift = 0};
+    SearchResult sr = search(t->root, hash, t->key_cmp, &keys[2]);
     mu_assert(sr.status == SEARCH_SUCCESS, "failed to find inserted value");
-    mu_assert(new_node == sr.value,
-              "Query result points to the wrong node");
+    mu_assert(new_node == sr.value, "Query result points to the wrong node");
     return 0;
 }
 
@@ -269,21 +253,24 @@ char *test_set_whole_enchilada_00()
         char key;
         int value;
     } data[5] = {{'0', 0}, {'2', 2}, {'4', 4}, {'7', 7}, {'8', 8}};
-    
-    HAMT *t = hamt_create(my_strncmp, 0);
+
+    HAMT *t = hamt_create(my_hash_1, my_strncmp_1);
     for (size_t i = 0; i < 5; ++i) {
-        printf("setting (%c, %d)\n", data[i].key, data[i].value);
-        set(t, &data[i].key, 1, &data[i].value);
-        debug_print(&t->root, 4);
+        // printf("setting (%c, %d)\n", data[i].key, data[i].value);
+        set(t->root, t->key_hash, t->key_cmp, &data[i].key, &data[i].value);
+        // debug_print(t->root, 4);
     }
 
-
     for (size_t i = 0; i < 5; ++i) {
-        printf("querying (%c, %d)\n", data[i].key, data[i].value);
-        uint32_t hash = murmur3_32((uint8_t *)&data[i].key, 1, 0);
-        SearchResult sr = search(&t->root, hash, &data[i].key, 1, 0, my_strncmp);
+        // printf("querying (%c, %d)\n", data[i].key, data[i].value);
+        Hash hash = {.key = &data[i].key,
+                     .hash_fn = t->key_hash,
+                     .hash = t->key_hash(&data[i].key, 0),
+                     .depth = 0,
+                     .shift = 0};
+        SearchResult sr = search(t->root, hash, t->key_cmp, &data[i].key);
         mu_assert(sr.status == SEARCH_SUCCESS, "failed to find inserted value");
-        int* value = (int*) untagged(sr.value->as.kv.value);
+        int *value = (int *)untagged(sr.value->as.kv.value);
         mu_assert(value, "found value is NULL");
         mu_assert(*value == data[i].value, "value mismatch");
         mu_assert(value == &data[i].value, "value pointer mismatch");
@@ -292,38 +279,120 @@ char *test_set_whole_enchilada_00()
     return 0;
 }
 
-char *test_set_whole_enchilada_01()
+static int my_keycmp_string(const void *lhs, const void *rhs)
 {
-    printf(". testing set/insert w/ key collision (large set)\n");
+    /* expects lhs and rhs to be pointers to 0-terminated strings */
+    size_t nl = strlen((const char *)lhs);
+    size_t nr = strlen((const char *)rhs);
+    return strncmp((const char *)lhs, (const char *)rhs, nl > nr ? nl : nr);
+}
+
+const char *strconcat(const char *s1, const char *s2)
+{
+    size_t n1 = strlen(s1);
+    size_t n2 = strlen(s2);
+    char *str = malloc(n1 + n2 + 1);
+    memcpy(str, s1, n1);
+    memcpy(str + n1, s2, n2 + 1); // copy \0 from second string
+    return str;
+}
+
+static uint32_t my_keyhash_string(const void *key, const size_t gen)
+{
+    uint32_t hash = murmur3_32((uint8_t *)key, strlen((const char *)key), gen);
+    return hash;
+}
+
+char *test_set_stringkeys()
+{
+    printf(". testing set/insert w/ string keys\n");
 
     /* test data, see above */
-    typedef struct KV {
-        char key;
+    struct {
+        char *key;
         int value;
-    } KV; 
+    } data[6] = {{"humpty", 1}, {"dumpty", 2}, {"sat", 3},
+                 {"on", 4},     {"the", 5},    {"wall", 6}};
 
-    KV* data = malloc(sizeof(KV)*1000);
-    // for (size_t i = 0; 
-    
-    HAMT *t = hamt_create(my_strncmp, 0);
-    for (size_t i = 0; i < 5; ++i) {
-        printf("setting (%c, %d)\n", data[i].key, data[i].value);
-        set(t, &data[i].key, 1, &data[i].value);
-        debug_print(&t->root, 4);
+    HAMT *t = hamt_create(my_keyhash_string, my_keycmp_string);
+    for (size_t i = 0; i < 6; ++i) {
+        // printf("setting (%s, %d)\n", data[i].key, data[i].value);
+        set(t->root, t->key_hash, t->key_cmp, data[i].key, &data[i].value);
+        // debug_print_string(t->root, 4);
     }
 
-
-    for (size_t i = 0; i < 5; ++i) {
-        printf("querying (%c, %d)\n", data[i].key, data[i].value);
-        uint32_t hash = murmur3_32((uint8_t *)&data[i].key, 1, 0);
-        SearchResult sr = search(&t->root, hash, &data[i].key, 1, 0, my_strncmp);
+    for (size_t i = 0; i < 6; ++i) {
+        // printf("querying (%s, %d)\n", data[i].key, data[i].value);
+        Hash hash = {.key = data[i].key,
+                     .hash_fn = t->key_hash,
+                     .hash = t->key_hash(data[i].key, 0),
+                     .depth = 0,
+                     .shift = 0};
+        SearchResult sr = search(t->root, hash, t->key_cmp, data[i].key);
         mu_assert(sr.status == SEARCH_SUCCESS, "failed to find inserted value");
-        int* value = (int*) untagged(sr.value->as.kv.value);
+        int *value = (int *)untagged(sr.value->as.kv.value);
         mu_assert(value, "found value is NULL");
+        // printf("    %s: %d == %d\n", sr.value->as.kv.key, *value,
+        // data[i].value);
         mu_assert(*value == data[i].value, "value mismatch");
         mu_assert(value == &data[i].value, "value pointer mismatch");
     }
 
+    return 0;
+}
+
+char *test_aspell_dict_en()
+{
+    printf(". testing large-scale set/insert w/ string keys\n");
+
+    FILE *fp;
+    char *line = NULL;
+    size_t len = 0;
+    ssize_t n, k;
+    char *tmp;
+
+    fp = fopen("test/words", "r");
+    mu_assert(fp, "Failed to open test dictionary");
+
+    HAMT *t = hamt_create(my_keyhash_string, my_keycmp_string);
+
+    while ((n = getline(&line, &len, fp)) != -1) {
+        k = line[n - 1] == '\n' ? n - 1 : n;
+        // FIXME: mem leak
+        tmp = strndup(line, k);
+        hamt_set(t, tmp, tmp);
+        line = NULL;
+    }
+
+    /* Check if we can retrieve the entire dictionary */
+    fseek(fp, 0, SEEK_SET);
+    int i = 0;
+    size_t maxdepth = 0;
+    const char *value;
+    while ((n = getline(&line, &len, fp)) != -1) {
+        ++i;
+        k = line[n - 1] == '\n' ? n - 1 : n;
+        tmp = strndup(line, k);
+        line = NULL;
+        value = (const char *)hamt_get(t, tmp);
+        mu_assert(value, "failed to retrieve existing value");
+        mu_assert(strncmp(value, tmp, k) == 0, "invalid value");
+    }
+    fclose(fp);
+
+    /* Check if "bluism" has search depth 7 */
+    char target[] = "bluism";
+    Hash hash = {.key = target,
+                 .hash_fn = my_keyhash_string,
+                 .hash = my_keyhash_string(target, 0),
+                 .depth = 0,
+                 .shift = 0};
+    SearchResult sr = search(t->root, hash, t->key_cmp, target);
+    mu_assert(sr.status == SEARCH_SUCCESS, "fail");
+    value = (char *) untagged(sr.value->as.kv.value);
+    mu_assert(value, "failed to retrieve existing value");
+    mu_assert(strcmp(value, target) == 0, "invalid value");
+    mu_assert(sr.hash.depth == 7, "invalid depth");
     return 0;
 }
 
@@ -336,9 +405,10 @@ static char *test_suite()
     mu_run_test(test_tagging);
     mu_run_test(test_murmur3_x86_32);
     mu_run_test(test_search);
-    mu_run_test(test_set);
     mu_run_test(test_set_with_collisions);
     mu_run_test(test_set_whole_enchilada_00);
+    mu_run_test(test_set_stringkeys);
+    mu_run_test(test_aspell_dict_en);
     // add more tests here
     return 0;
 }

@@ -5,36 +5,22 @@
 #include <stdint.h>
 #include <stdio.h>
 
+typedef int (*HamtCmpFn)(const void *lhs, const void *rhs);
+typedef uint32_t (*HamtKeyHashFn)(const void *key, const size_t gen);
+
 struct HamtNode;
 
-typedef struct HamtNode {
-  union {
-    struct {
-      void *value;
-      void *key;
-    } kv;
-    struct {
-      struct HamtNode *ptr;
-      uint32_t index;
-    } table;
-  } as;
-} HamtNode;
-
-typedef int (*HamtCmpEqFn)(const void* lhs, const void* rhs, size_t len);
-
 typedef struct HAMT {
-  HamtNode root;
-  HamtCmpEqFn cmp_eq;
-  uint32_t seed;
-  size_t size;
+  struct HamtNode *root;
+  HamtKeyHashFn key_hash;
+  HamtCmpFn key_cmp;
 } HAMT;
 
+HAMT *hamt_create(HamtKeyHashFn key_hash, HamtCmpFn key_cmp);
+void hamt_delete(HAMT *);
 
-HAMT* hamt_create(HamtCmpEqFn cmp_eq, uint32_t seed);
-void hamt_delete(HAMT*);
-
-const void *hamt_get(const HAMT *trie, void *key, size_t keylen);
-int hamt_set(HAMT *trie, void *key, size_t keylen, void *value);
-void *hamt_remove(HAMT *trie, void *key, size_t keylen);
+const void *hamt_get(const HAMT *trie, void *key);
+const void *hamt_set(HAMT *trie, void *key, void *value);
+void *hamt_remove(HAMT *trie, void *key);
 
 #endif /* HAMT_H */
