@@ -1,11 +1,11 @@
 # hamt
-A hash array-mapped trie implementation in C
+A hash array-mapped trie implementation in C. This is work in progress.
 
 ## Todo
 
 ### Basic implementation
 
-- [ ] add tests for depth>5
+- [x] add basic tests for depth>5
 - [ ] `hamt_remove(key)`
 - [ ] cleanup
   - hash state management
