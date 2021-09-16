@@ -43,6 +43,10 @@ typedef struct Hash {
             fprintf(stderr, "%s:%d:%s(): " fmt, __FILE__, __LINE__, __func__,  \
                     __VA_ARGS__);                                              \
     } while (0)
+
+#define index_clear_bit(_index, _n) _index & ~(1 << _n)
+#define index_set_bit(_index, _n) _index | (1 << _n)
+
 static void debug_print_string(size_t ix, const HamtNode *node, size_t depth);
 
 static inline Hash hash_step(const Hash h)
@@ -99,6 +103,13 @@ typedef struct SearchResult {
     HamtNode *value;
     Hash hash;
 } SearchResult;
+
+typedef enum { REMOVE_SUCCESS, REMOVE_GATHERED, REMOVE_NOTFOUND } RemoveStatus;
+
+typedef struct RemoveResult {
+    RemoveStatus status;
+    void *value;
+} RemoveResult;
 
 static inline bool has_index(const HamtNode *anchor, size_t index)
 {
@@ -174,42 +185,84 @@ HamtNode *mem_allocate_table(size_t size)
     return (HamtNode *)mem_alloc(size * sizeof(HamtNode));
 }
 
-void mem_free_table(HamtNode *ptr, size_t size)
+void mem_free_table(HamtNode *ptr, size_t size) { mem_free(ptr); }
+
+HamtNode *mem_extend_table(HamtNode *anchor, size_t n_rows, uint32_t index,
+                           uint32_t pos)
 {
-    mem_free(ptr);
+    HamtNode *new_table = mem_allocate_table(n_rows + 1);
+    if (n_rows > 0) {
+        /* copy over table */
+        memcpy(&new_table[0], &anchor->as.table.ptr[0], pos * sizeof(HamtNode));
+        /* note: this works since (n_rows - pos) == 0 for cases
+         * where we're adding the new k/v pair at the end (i.e. memcpy(a, b, 0)
+         * is a nop) */
+        memcpy(&new_table[pos + 1], &anchor->as.table.ptr[pos],
+               (n_rows - pos) * sizeof(HamtNode));
+    }
+    assert(!is_value(anchor->as.kv.value) && "URGS");
+    mem_free_table(anchor->as.table.ptr, n_rows);
+    anchor->as.table.ptr = new_table;
+    anchor->as.table.index |= (1 << index);
+    return anchor;
+}
+
+HamtNode *mem_shrink_table(HamtNode *anchor, size_t n_rows, uint32_t index,
+                           uint32_t pos)
+{
+    /* debug assertions */
+    assert(anchor && "Anchor cannot be NULL");
+    assert(!is_value(anchor->as.kv.value) &&
+           "Invariant: shrinking a table requires an internal node");
+
+    HamtNode *new_table = NULL;
+    uint32_t new_index = 0;
+    if (n_rows > 0) {
+        new_table = mem_allocate_table(n_rows - 1);
+        new_index = anchor->as.table.index & ~(1 << index);
+        memcpy(&new_table[0], &anchor->as.table.ptr[0], pos * sizeof(HamtNode));
+        memcpy(&new_table[pos], &anchor->as.table.ptr[pos + 1],
+               (n_rows - pos - 1) * sizeof(HamtNode));
+    }
+    mem_free_table(anchor->as.table.ptr, n_rows);
+    anchor->as.table.index = new_index;
+    anchor->as.table.ptr = new_table;
+    return anchor;
+}
+
+HamtNode *mem_gather_table(HamtNode *anchor, uint32_t pos)
+{
+    /* debug assertions */
+    assert(anchor && "Anchor cannot be NULL");
+    assert(!is_value(anchor->as.kv.value) &&
+           "Invariant: gathering a table requires an internal anchor");
+    assert((get_popcount(anchor->as.table.index) == 2) &&
+           "Table must have size 2 to gather");
+    assert((pos == 0 || pos == 1) && "pos must be 0 or 1");
+
+    HamtNode *table = anchor->as.table.ptr;
+    anchor->as.kv.key = table[pos].as.kv.key;
+    anchor->as.kv.value = table[pos].as.kv.value; /* already tagged */
+    mem_free_table(table, 2);
+    return anchor;
 }
 
 static const HamtNode *insert_kv(HamtNode *anchor, Hash hash, void *key,
                                  void *value)
 {
     /* calculate position in new table */
-    uint32_t pos = hash_get_index(&hash);
-    uint32_t new_index = anchor->as.table.index | (1 << pos);
-    int compact_index = get_pos(pos, new_index);
-    /* create new table */
-    size_t cur_size = get_popcount(anchor->as.table.index);
-    size_t new_size = cur_size + 1;
-    HamtNode *new_table = mem_allocate_table(new_size);
-    if (cur_size > 0) {
-        /* copy over table */
-        memcpy(&new_table[0], &anchor->as.table.ptr[0],
-               compact_index * sizeof(HamtNode));
-        /* note: this works since (cur_size - compact_index) == 0 for cases
-         * where we're adding the new k/v pair at the end (i.e. memcpy(a, b, 0)
-         * is a nop) */
-        memcpy(&new_table[compact_index + 1],
-               &anchor->as.table.ptr[compact_index],
-               (cur_size - compact_index) * sizeof(HamtNode));
-    }
-    /* add new k/v pair */
-    new_table[compact_index].as.kv.key = key;
-    new_table[compact_index].as.kv.value = tagged(value);
-    /* update trie */
-    anchor->as.table.index = new_index;
-    mem_free_table(anchor->as.table.ptr, cur_size);
-    anchor->as.table.ptr = new_table;
+    uint32_t ix = hash_get_index(&hash);
+    uint32_t new_index = anchor->as.table.index | (1 << ix);
+    int pos = get_pos(ix, new_index);
+    /* extend table */
+    size_t n_rows = get_popcount(anchor->as.table.index);
+    anchor = mem_extend_table(anchor, n_rows, ix, pos);
+    HamtNode *new_table = anchor->as.table.ptr;
+    /* set new k/v pair */
+    new_table[pos].as.kv.key = key;
+    new_table[pos].as.kv.value = tagged(value);
     /* return a pointer to the inserted k/v pair */
-    return &new_table[compact_index];
+    return &new_table[pos];
 }
 
 static const HamtNode *insert_table(HamtNode *anchor, Hash hash, void *key,
@@ -301,10 +354,75 @@ const void *hamt_set(HAMT *trie, void *key, void *value)
     return n->as.kv.value;
 }
 
+static RemoveResult rem(HamtNode *root, HamtNode *anchor, Hash hash,
+                        HamtCmpFn cmp_eq, const void *key)
+{
+    assert(!is_value(anchor->as.kv.value) &&
+           "Invariant: removal requires an internal node");
+    /* determine the expected index in table */
+    uint32_t expected_index = hash_get_index(&hash);
+    /* check if the expected index is set */
+    if (has_index(anchor, expected_index)) {
+        /* if yes, get the compact index to address the array */
+        int pos = get_pos(expected_index, anchor->as.table.index);
+        /* index into the table and check what type of entry we're looking at */
+        HamtNode *next = &anchor->as.table.ptr[pos];
+        if (is_value(next->as.kv.value)) {
+            if ((*cmp_eq)(key, next->as.kv.key) == 0) {
+                uint32_t n_rows = get_popcount(anchor->as.table.index);
+                void *value = next->as.kv.value;
+                /* We shrink tables while they have more than 2 rows and switch
+                 * to gathering the subtrie otherwise. The exception is when we
+                 * are at the root, where we must shrink the table to one or
+                 * zero.
+                 */
+                if (n_rows > 2 || (n_rows >= 1 && root->as.table.ptr == next)) {
+                    anchor =
+                        mem_shrink_table(anchor, n_rows, expected_index, pos);
+                } else if (n_rows == 2) {
+                    /* gather, dropping the current row */
+                    anchor = mem_gather_table(anchor, !pos);
+                    return (RemoveResult){.status = REMOVE_GATHERED,
+                                          .value = value};
+                }
+                return (RemoveResult){.status = REMOVE_SUCCESS, .value = value};
+            }
+            /* not found: same hash but different key */
+            return (RemoveResult){.status = REMOVE_NOTFOUND, .value = NULL};
+        } else {
+            /* For table entries, recurse to the next level */
+            assert(next->as.table.ptr != NULL &&
+                   "invariant: table ptrs must not be NULL");
+            RemoveResult result = rem(root, next, hash_step(hash), cmp_eq, key);
+            if (next != root->as.table.ptr &&
+                result.status == REMOVE_GATHERED) {
+                /* remove dangling internal nodes: check if we need to
+                 * propagate the gathering of the key-value entry */
+                int n_rows = get_popcount(anchor->as.table.index);
+                if (n_rows == 1) {
+                    anchor = mem_gather_table(anchor, 0);
+                    return (RemoveResult){.status = REMOVE_GATHERED,
+                                          .value = result.value};
+                }
+            }
+            return (RemoveResult){.status = REMOVE_SUCCESS,
+                                  .value = result.value};
+        }
+    }
+    return (RemoveResult){.status = REMOVE_NOTFOUND, .value = NULL};
+}
+
 void *hamt_remove(HAMT *trie, void *key)
 {
-    assert(0 && "Not implemented yet.");
-    return NULL;
+    Hash hash = {.key = key,
+                 .hash_fn = trie->key_hash,
+                 .hash = trie->key_hash(key, 0),
+                 .depth = 0,
+                 .shift = 0};
+    RemoveResult rr = rem(trie->root, trie->root, hash, trie->key_cmp, key);
+    return rr.status == REMOVE_SUCCESS || rr.status == REMOVE_GATHERED
+               ? untagged(rr.value)
+               : NULL;
 }
 
 static void debug_print(const HamtNode *node, size_t depth)
@@ -334,7 +452,7 @@ static void debug_print_string(size_t ix, const HamtNode *node, size_t depth)
 {
     /* print node*/
     if (!is_value(node->as.kv.value)) {
-        trace("%*s%lu : %s", (int)depth * 2, "", ix, "[ ");
+        printf("%*s%lu : %s", (int)depth * 2, "", ix, "[ ");
         for (size_t i = 0; i < 32; ++i) {
             if (node->as.table.index & (1 << i)) {
                 printf("%2lu(%i) ", i, get_pos(i, node->as.table.index));
@@ -348,7 +466,7 @@ static void debug_print_string(size_t ix, const HamtNode *node, size_t depth)
         }
     } else {
         /* print value */
-        trace("%*s +- (%lu): (%s, %s)\n", (int)depth * 2, "", ix,
-              (char *)node->as.kv.key, (char *)untagged(node->as.kv.value));
+        printf("%*s +- (%lu): (%s, %i)\n", (int)depth * 2, "", ix,
+               (char *)node->as.kv.key, *(int *)untagged(node->as.kv.value));
     }
 }

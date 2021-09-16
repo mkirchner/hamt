@@ -389,10 +389,128 @@ char *test_aspell_dict_en()
                  .shift = 0};
     SearchResult sr = search(t->root, hash, t->key_cmp, target);
     mu_assert(sr.status == SEARCH_SUCCESS, "fail");
-    value = (char *) untagged(sr.value->as.kv.value);
+    value = (char *)untagged(sr.value->as.kv.value);
     mu_assert(value, "failed to retrieve existing value");
     mu_assert(strcmp(value, target) == 0, "invalid value");
     mu_assert(sr.hash.depth == 7, "invalid depth");
+    return 0;
+}
+
+static char *test_shrink_table()
+{
+    printf(". testing table operations: shrink\n");
+    enum { N = 5 };
+    struct {
+        char *key;
+        int value;
+        int index;
+    } data[N] = {
+        {"0", 0, 1}, {"2", 2, 3}, {"4", 4, 4}, {"7", 7, 12}, {"8", 8, 22}};
+
+    /* create table w/ 5 entries and delete each position */
+    for (size_t delete_pos = 0; delete_pos < N; delete_pos++) {
+
+        HamtNode *a0 = mem_alloc(sizeof(HamtNode));
+        a0->as.table.ptr = mem_allocate_table(N);
+        for (size_t i = 0; i < N; ++i) {
+            a0->as.table.index |= (1 << data[i].index);
+            a0->as.table.ptr[i].as.kv.key = (void *)data[i].key;
+            a0->as.table.ptr[i].as.kv.value = tagged(&data[i].value);
+        }
+        uint32_t delete_index = data[delete_pos].index;
+        HamtNode *a1 = mem_shrink_table(a0, N, delete_index, delete_pos);
+        mu_assert(get_popcount(a1->as.table.index) == N - 1,
+                  "wrong number of rows");
+        size_t diff = 0;
+        for (size_t i = 0; i < N; ++i) {
+            if (i == delete_pos) {
+                diff = 1;
+                continue;
+            }
+            mu_assert(data[i].key == a1->as.table.ptr[i - diff].as.kv.key,
+                      "unexpected key in shrunk table");
+            mu_assert((void *)&data[i].value ==
+                          untagged(a1->as.table.ptr[i - diff].as.kv.value),
+                      "unexpected value in shrunk table");
+        }
+        mem_free_table(a1->as.table.ptr, 4);
+        mem_free(a1);
+    }
+    return 0;
+}
+
+static char *test_gather_table()
+{
+
+    printf(". testing table operations: gather\n");
+    enum { N = 2 };
+    struct {
+        char *key;
+        int value;
+        int index;
+    } data[N] = {{"0", 0, 1}, {"2", 2, 3}};
+
+    HamtNode *a0 = mem_alloc(sizeof(HamtNode));
+    a0->as.table.index = 0;
+    a0->as.table.ptr = mem_allocate_table(N);
+    for (size_t i = 0; i < N; ++i) {
+        a0->as.table.index |= (1 << data[i].index);
+        a0->as.table.ptr[i].as.kv.key = (void *)data[i].key;
+        a0->as.table.ptr[i].as.kv.value = tagged(&data[i].value);
+    }
+
+    HamtNode *a1 = mem_gather_table(a0, 0);
+
+    mu_assert(a1->as.kv.key == data[0].key, "wrong key in gather");
+    mu_assert(untagged(a1->as.kv.value) == (void *)&data[0].value,
+              "wrong value in gather");
+    return 0;
+}
+
+char *test_remove()
+{
+    printf(". testing remove w/ string keys\n");
+
+    enum { N = 6 };
+    struct {
+        char *key;
+        int value;
+    } data[N] = {{"humpty", 1}, {"dumpty", 2}, {"sat", 3},
+                 {"on", 4},     {"the", 5},    {"wall", 6}};
+
+    HAMT *t = hamt_create(my_keyhash_string, my_keycmp_string);
+
+    // printf("=========================\n");
+    for (size_t k = 0; k < 3; ++k) {
+        // printf("-%lu------------------------\n", k);
+
+        // debug_print_string(0, t->root, 4);
+        for (size_t i = 0; i < N; ++i) {
+            set(t->root, t->key_hash, t->key_cmp, data[i].key, &data[i].value);
+        }
+
+        // debug_print_string(0, t->root, 4);
+
+        for (size_t i = 0; i < N; ++i) {
+            Hash hash = {.key = data[i].key,
+                         .hash_fn = t->key_hash,
+                         .hash = t->key_hash(data[i].key, 0),
+                         .depth = 0,
+                         .shift = 0};
+            // printf("removing %s from pre-removal trie:\n", data[i].key);
+            // debug_print_string(0, t->root, 4);
+            RemoveResult rr =
+                rem(t->root, t->root, hash, t->key_cmp, data[i].key);
+            mu_assert(rr.status == REMOVE_SUCCESS ||
+                          rr.status == REMOVE_GATHERED,
+                      "failed to find inserted value");
+            // printf("%lu: %s -> %i\n", i, data[i].key, *(untagged(rr.value)));
+            mu_assert(*(int *)untagged(rr.value) == data[i].value,
+                      "wrong value in remove");
+        }
+        // debug_print_string(0, t->root, 4);
+    }
+
     return 0;
 }
 
@@ -409,6 +527,9 @@ static char *test_suite()
     mu_run_test(test_set_whole_enchilada_00);
     mu_run_test(test_set_stringkeys);
     mu_run_test(test_aspell_dict_en);
+    mu_run_test(test_shrink_table);
+    mu_run_test(test_gather_table);
+    mu_run_test(test_remove);
     // add more tests here
     return 0;
 }
