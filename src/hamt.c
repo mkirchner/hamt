@@ -11,12 +11,28 @@
 /* Pointer tagging */
 #define HAMT_TAG_MASK 0x3 /* last two bits */
 #define HAMT_TAG_VALUE 0x1
+#define tagged(__p) (HamtNode *)((uintptr_t)__p | HAMT_TAG_VALUE)
+#define untagged(__p) (HamtNode *)((uintptr_t)__p & ~HAMT_TAG_MASK)
+#define is_value(__p) (((uintptr_t)__p & HAMT_TAG_MASK) == HAMT_TAG_VALUE)
+
+/* Bit fiddling */
+#define index_clear_bit(_index, _n) _index & ~(1 << _n)
+#define index_set_bit(_index, _n) _index | (1 << _n)
+
+/* debugging */
+#define DEBUG 0
+#define trace(fmt, ...)                                                        \
+    do {                                                                       \
+        if (DEBUG)                                                             \
+            fprintf(stderr, "%s:%d:%s(): " fmt, __FILE__, __LINE__, __func__,  \
+                    __VA_ARGS__);                                              \
+    } while (0)
 
 /* Node data structure */
 typedef struct HamtNode {
     union {
         struct {
-            void *value;
+            void *value; /* tagged pointer */
             void *key;
         } kv;
         struct {
@@ -26,13 +42,14 @@ typedef struct HamtNode {
     } as;
 } HamtNode;
 
+/* Opaque user-facing implementation */
 struct HamtImpl {
-  struct HamtNode *root;
-  HamtKeyHashFn key_hash;
-  HamtCmpFn key_cmp;
+    struct HamtNode *root;
+    HamtKeyHashFn key_hash;
+    HamtCmpFn key_cmp;
 };
 
-
+/* Hashing w/ state management */
 typedef struct Hash {
     const void *key;
     HamtKeyHashFn hash_fn;
@@ -41,19 +58,29 @@ typedef struct Hash {
     size_t shift;
 } Hash;
 
-/* debugging */
+/* Search results */
+typedef enum {
+    SEARCH_SUCCESS,
+    SEARCH_FAIL_NOTFOUND,
+    SEARCH_FAIL_KEYMISMATCH
+} SearchStatus;
 
-#define DEBUG 0
-#define trace(fmt, ...)                                                        \
-    do {                                                                       \
-        if (DEBUG)                                                             \
-            fprintf(stderr, "%s:%d:%s(): " fmt, __FILE__, __LINE__, __func__,  \
-                    __VA_ARGS__);                                              \
-    } while (0)
+typedef struct SearchResult {
+    SearchStatus status;
+    HamtNode *anchor;
+    HamtNode *value;
+    Hash hash;
+} SearchResult;
 
-#define index_clear_bit(_index, _n) _index & ~(1 << _n)
-#define index_set_bit(_index, _n) _index | (1 << _n)
+/* Removal results */
+typedef enum { REMOVE_SUCCESS, REMOVE_GATHERED, REMOVE_NOTFOUND } RemoveStatus;
 
+typedef struct RemoveResult {
+    RemoveStatus status;
+    void *value;
+} RemoveResult;
+
+/* FIXME: remove me */
 static void debug_print_string(size_t ix, const HamtNode *node, size_t depth);
 
 static inline Hash hash_step(const Hash h)
@@ -69,12 +96,6 @@ static inline Hash hash_step(const Hash h)
     }
     return hash;
 }
-
-static inline uint32_t hash_get_hash(Hash *h) { return h->hash; }
-
-#define tagged(__p) (HamtNode *)((uintptr_t)__p | HAMT_TAG_VALUE)
-#define untagged(__p) (HamtNode *)((uintptr_t)__p & ~HAMT_TAG_MASK)
-#define is_value(__p) (((uintptr_t)__p & HAMT_TAG_MASK) == HAMT_TAG_VALUE)
 
 static inline uint32_t hash_get_index(const Hash *h)
 {
@@ -98,26 +119,6 @@ HAMT hamt_create(HamtKeyHashFn key_hash, HamtCmpFn key_cmp)
     return trie;
 }
 
-typedef enum {
-    SEARCH_SUCCESS,
-    SEARCH_FAIL_NOTFOUND,
-    SEARCH_FAIL_KEYMISMATCH
-} SearchStatus;
-
-typedef struct SearchResult {
-    SearchStatus status;
-    HamtNode *anchor;
-    HamtNode *value;
-    Hash hash;
-} SearchResult;
-
-typedef enum { REMOVE_SUCCESS, REMOVE_GATHERED, REMOVE_NOTFOUND } RemoveStatus;
-
-typedef struct RemoveResult {
-    RemoveStatus status;
-    void *value;
-} RemoveResult;
-
 static inline bool has_index(const HamtNode *anchor, size_t index)
 {
     assert(anchor && "anchor must not be NULL");
@@ -130,28 +131,16 @@ static SearchResult search(HamtNode *anchor, Hash hash, HamtCmpFn cmp_eq,
 {
     assert(!is_value(anchor->as.kv.value) &&
            "Invariant: search requires an internal node");
-#if DEBUG
-    char buf[33];
-    trace("search (->%s)@%p: depth=%lu, shift=%lu, hash=%s\n", (char *)key,
-          anchor, hash.depth, hash.shift, i2b(hash.hash, buf));
-    trace("    index: %s\n", i2b(anchor->as.table.index, buf));
-#endif
     /* determine the expected index in table */
     uint32_t expected_index = hash_get_index(&hash);
     /* check if the expected index is set */
     if (has_index(anchor, expected_index)) {
         /* if yes, get the compact index to address the array */
         int pos = get_pos(expected_index, anchor->as.table.index);
-        trace("    Found index %u, pos %i, at depth %lu\n", expected_index, pos,
-              hash.depth);
-
         /* index into the table and check what type of entry we're looking at */
         HamtNode *next = &anchor->as.table.ptr[pos];
         if (is_value(next->as.kv.value)) {
             if ((*cmp_eq)(key, next->as.kv.key) == 0) {
-                trace("    Key match: %s == %s (%s)\n", (char *)key,
-                      (char *)next->as.kv.key,
-                      (char *)untagged(next->as.kv.value));
                 /* keys match */
                 SearchResult result = {.status = SEARCH_SUCCESS,
                                        .anchor = anchor,
@@ -160,8 +149,6 @@ static SearchResult search(HamtNode *anchor, Hash hash, HamtCmpFn cmp_eq,
                 return result;
             }
             /* not found: same hash but different key */
-            trace("    Key mismatch: %s != %s\n", (char *)key,
-                  (char *)next->as.kv.key);
             SearchResult result = {.status = SEARCH_FAIL_KEYMISMATCH,
                                    .anchor = anchor,
                                    .value = next,
@@ -174,11 +161,6 @@ static SearchResult search(HamtNode *anchor, Hash hash, HamtCmpFn cmp_eq,
             return search(next, hash_step(hash), cmp_eq, key);
         }
     }
-#if DEBUG
-    trace("    Failed to find index %u, at depth %lu\n", expected_index,
-          hash.depth);
-    debug_print_string(0, anchor, 4);
-#endif
     /* expected index is not set, terminate search */
     SearchResult result = {.status = SEARCH_FAIL_NOTFOUND,
                            .anchor = anchor,
@@ -275,7 +257,6 @@ static const HamtNode *insert_kv(HamtNode *anchor, Hash hash, void *key,
 static const HamtNode *insert_table(HamtNode *anchor, Hash hash, void *key,
                                     void *value)
 {
-    trace("Insert table for %s\n", (char *)key);
     /* Collect everything we know about the existing value */
     Hash x_hash = {.key = anchor->as.kv.key,
                    .hash_fn = hash.hash_fn,
@@ -326,9 +307,6 @@ static const HamtNode *set(HamtNode *anchor, HamtKeyHashFn hash_fn,
                  .depth = 0,
                  .shift = 0};
     SearchResult sr = search(anchor, hash, cmp_fn, key);
-    if (hash.depth > 10) {
-        printf("key = %s has depth %lu\n", (char *)key, sr.hash.depth);
-    }
     switch (sr.status) {
     case SEARCH_SUCCESS:
         sr.value->as.kv.value = tagged(value);
