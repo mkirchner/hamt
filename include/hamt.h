@@ -8,19 +8,13 @@
 typedef int (*HamtCmpFn)(const void *lhs, const void *rhs);
 typedef uint32_t (*HamtKeyHashFn)(const void *key, const size_t gen);
 
-struct HamtNode;
+typedef struct HamtImpl *HAMT;
 
-typedef struct HAMT {
-  struct HamtNode *root;
-  HamtKeyHashFn key_hash;
-  HamtCmpFn key_cmp;
-} HAMT;
+HAMT hamt_create(HamtKeyHashFn key_hash, HamtCmpFn key_cmp);
+void hamt_delete(HAMT);
 
-HAMT *hamt_create(HamtKeyHashFn key_hash, HamtCmpFn key_cmp);
-void hamt_delete(HAMT *);
-
-const void *hamt_get(const HAMT *trie, void *key);
-const void *hamt_set(HAMT *trie, void *key, void *value);
-void *hamt_remove(HAMT *trie, void *key);
+const void *hamt_get(const HAMT trie, void *key);
+const void *hamt_set(HAMT trie, void *key, void *value);
+void *hamt_remove(HAMT trie, void *key);
 
 #endif /* HAMT_H */

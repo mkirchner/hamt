@@ -26,6 +26,13 @@ typedef struct HamtNode {
     } as;
 } HamtNode;
 
+struct HamtImpl {
+  struct HamtNode *root;
+  HamtKeyHashFn key_hash;
+  HamtCmpFn key_cmp;
+};
+
+
 typedef struct Hash {
     const void *key;
     HamtKeyHashFn hash_fn;
@@ -81,9 +88,9 @@ static int get_pos(uint32_t sparse_index, uint32_t bitmap)
     return get_popcount(bitmap & ((1 << sparse_index) - 1));
 }
 
-HAMT *hamt_create(HamtKeyHashFn key_hash, HamtCmpFn key_cmp)
+HAMT hamt_create(HamtKeyHashFn key_hash, HamtCmpFn key_cmp)
 {
-    HAMT *trie = mem_alloc(sizeof(HAMT));
+    struct HamtImpl *trie = mem_alloc(sizeof(struct HamtImpl));
     trie->root = mem_alloc(sizeof(HamtNode));
     memset(trie->root, 0, sizeof(HamtNode));
     trie->key_hash = key_hash;
@@ -333,7 +340,7 @@ static const HamtNode *set(HamtNode *anchor, HamtKeyHashFn hash_fn,
     }
 }
 
-const void *hamt_get(const HAMT *trie, void *key)
+const void *hamt_get(const HAMT trie, void *key)
 {
     Hash hash = {.key = key,
                  .hash_fn = trie->key_hash,
@@ -347,7 +354,7 @@ const void *hamt_get(const HAMT *trie, void *key)
     return NULL;
 }
 
-const void *hamt_set(HAMT *trie, void *key, void *value)
+const void *hamt_set(HAMT trie, void *key, void *value)
 {
     const HamtNode *n =
         set(trie->root, trie->key_hash, trie->key_cmp, key, value);
@@ -412,7 +419,7 @@ static RemoveResult rem(HamtNode *root, HamtNode *anchor, Hash hash,
     return (RemoveResult){.status = REMOVE_NOTFOUND, .value = NULL};
 }
 
-void *hamt_remove(HAMT *trie, void *key)
+void *hamt_remove(HAMT trie, void *key)
 {
     Hash hash = {.key = key,
                  .hash_fn = trie->key_hash,

@@ -169,7 +169,7 @@ static char *test_search()
     t_root[2].as.kv.key = &keys[0];
     t_root[2].as.kv.value = tagged(&values[0]);
 
-    HAMT t;
+    struct HamtImpl t;
     t.key_cmp = my_strncmp_1;
     t.root->as.table.index = (1 << 8) | (1 << 23) | (1 << 31);
     t.root->as.table.ptr = t_root;
@@ -215,7 +215,7 @@ static char *test_search()
 char *test_set_with_collisions()
 {
     printf(". testing set/insert w/ forced key collision\n");
-    HAMT *t = hamt_create(my_hash_1, my_strncmp_1);
+    struct HamtImpl *t = hamt_create(my_hash_1, my_strncmp_1);
 
     /* example 1: no hash collisions */
     char keys[] = "028";
@@ -254,7 +254,7 @@ char *test_set_whole_enchilada_00()
         int value;
     } data[5] = {{'0', 0}, {'2', 2}, {'4', 4}, {'7', 7}, {'8', 8}};
 
-    HAMT *t = hamt_create(my_hash_1, my_strncmp_1);
+    struct HamtImpl *t = hamt_create(my_hash_1, my_strncmp_1);
     for (size_t i = 0; i < 5; ++i) {
         // printf("setting (%c, %d)\n", data[i].key, data[i].value);
         set(t->root, t->key_hash, t->key_cmp, &data[i].key, &data[i].value);
@@ -275,7 +275,6 @@ char *test_set_whole_enchilada_00()
         mu_assert(*value == data[i].value, "value mismatch");
         mu_assert(value == &data[i].value, "value pointer mismatch");
     }
-
     return 0;
 }
 
@@ -314,7 +313,7 @@ char *test_set_stringkeys()
     } data[6] = {{"humpty", 1}, {"dumpty", 2}, {"sat", 3},
                  {"on", 4},     {"the", 5},    {"wall", 6}};
 
-    HAMT *t = hamt_create(my_keyhash_string, my_keycmp_string);
+    struct HamtImpl *t = hamt_create(my_keyhash_string, my_keycmp_string);
     for (size_t i = 0; i < 6; ++i) {
         // printf("setting (%s, %d)\n", data[i].key, data[i].value);
         set(t->root, t->key_hash, t->key_cmp, data[i].key, &data[i].value);
@@ -354,7 +353,7 @@ char *test_aspell_dict_en()
     fp = fopen("test/words", "r");
     mu_assert(fp, "Failed to open test dictionary");
 
-    HAMT *t = hamt_create(my_keyhash_string, my_keycmp_string);
+    struct HamtImpl *t = hamt_create(my_keyhash_string, my_keycmp_string);
 
     while ((n = getline(&line, &len, fp)) != -1) {
         k = line[n - 1] == '\n' ? n - 1 : n;
@@ -478,7 +477,7 @@ char *test_remove()
     } data[N] = {{"humpty", 1}, {"dumpty", 2}, {"sat", 3},
                  {"on", 4},     {"the", 5},    {"wall", 6}};
 
-    HAMT *t = hamt_create(my_keyhash_string, my_keycmp_string);
+    struct HamtImpl *t = hamt_create(my_keyhash_string, my_keycmp_string);
 
     // printf("=========================\n");
     for (size_t k = 0; k < 3; ++k) {
