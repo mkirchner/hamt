@@ -15,7 +15,7 @@ A hash array-mapped trie implementation in C. This is work in progress.
   - [ ] hash state management (pass by value vs pass by ref)
 - [ ] testing
   - [ ] add mem checks
-  - [ ] set up github actions
+  - [x] set up github actions
 - [ ] docs
 
 ### Performance testing
