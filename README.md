@@ -7,6 +7,7 @@ A hash array-mapped trie implementation in C. This is work in progress.
 
 - [x] add basic tests for depth>5
 - [x] `hamt_remove(key)`
+- [ ] `hamt_size(handle)`
 - [ ] `hamt_delete(handle)`
 - [ ] iteration over contents (unsorted, stable)
 - [ ] typing solution (`#define *_TYPE` and `#include` approach?)
