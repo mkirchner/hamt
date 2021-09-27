@@ -8,6 +8,8 @@
 
 #include "../src/hamt.c"
 
+// #define hamt_delete(x) do {} while(0)
+
 static char *test_popcount()
 {
     printf(". testing popcount\n");
@@ -171,6 +173,7 @@ static char *test_search()
 
     struct HamtImpl t;
     t.key_cmp = my_strncmp_1;
+    t.root = mem_alloc(sizeof(HamtNode));
     t.root->as.table.index = (1 << 8) | (1 << 23) | (1 << 31);
     t.root->as.table.ptr = t_root;
 
@@ -209,6 +212,7 @@ static char *test_search()
     free(t_root);
     free(t_23);
     free(t_8);
+    free(t.root);
     return 0;
 }
 
@@ -241,6 +245,7 @@ char *test_set_with_collisions()
     SearchResult sr = search(t->root, hash, t->key_cmp, &keys[2]);
     mu_assert(sr.status == SEARCH_SUCCESS, "failed to find inserted value");
     mu_assert(new_node == sr.value, "Query result points to the wrong node");
+    hamt_delete(t);
     return 0;
 }
 
@@ -275,6 +280,7 @@ char *test_set_whole_enchilada_00()
         mu_assert(*value == data[i].value, "value mismatch");
         mu_assert(value == &data[i].value, "value pointer mismatch");
     }
+    hamt_delete(t);
     return 0;
 }
 
@@ -336,7 +342,7 @@ char *test_set_stringkeys()
         mu_assert(*value == data[i].value, "value mismatch");
         mu_assert(value == &data[i].value, "value pointer mismatch");
     }
-
+    hamt_delete(t);
     return 0;
 }
 
@@ -392,6 +398,7 @@ char *test_aspell_dict_en()
     mu_assert(value, "failed to retrieve existing value");
     mu_assert(strcmp(value, target) == 0, "invalid value");
     mu_assert(sr.hash.depth == 7, "invalid depth");
+    hamt_delete(t);
     return 0;
 }
 
@@ -509,7 +516,27 @@ char *test_remove()
         }
         // debug_print_string(0, t->root, 4);
     }
+    hamt_delete(t);
+    return 0;
+}
 
+static char *test_create_delete()
+{
+    printf(". testing create/delete cycle\n");
+    struct HamtImpl *t;
+    t = hamt_create(my_keyhash_string, my_keycmp_string);
+    hamt_delete(t);
+
+    t = hamt_create(my_keyhash_string, my_keycmp_string);
+    struct {
+        char *key;
+        int value;
+    } data[6] = {{"humpty", 1}, {"dumpty", 2}, {"sat", 3},
+                 {"on", 4},     {"the", 5},    {"wall", 6}};
+    for (size_t i = 0; i < 6; ++i) {
+        set(t->root, t->key_hash, t->key_cmp, data[i].key, &data[i].value);
+    }
+    hamt_delete(t);
     return 0;
 }
 
@@ -529,6 +556,7 @@ static char *test_suite()
     mu_run_test(test_shrink_table);
     mu_run_test(test_gather_table);
     mu_run_test(test_remove);
+    mu_run_test(test_create_delete);
     // add more tests here
     return 0;
 }
