@@ -173,6 +173,7 @@ static char *test_search()
 
     struct HamtImpl t;
     t.key_cmp = my_strncmp_1;
+    t.root = mem_alloc(sizeof(HamtNode));
     t.root->as.table.index = (1 << 8) | (1 << 23) | (1 << 31);
     t.root->as.table.ptr = t_root;
 
@@ -211,6 +212,7 @@ static char *test_search()
     free(t_root);
     free(t_23);
     free(t_8);
+    free(t.root);
     return 0;
 }
 
