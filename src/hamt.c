@@ -412,11 +412,12 @@ void *hamt_remove(HAMT trie, void *key)
 
 void delete (HamtNode *anchor)
 {
-    assert(!is_value(anchor->as.kv.value) && "delete requires an internal node");
+    assert(!is_value(anchor->as.kv.value) &&
+           "delete requires an internal node");
     size_t n = get_popcount(anchor->as.table.index);
     for (size_t i = 0; i < n; ++i) {
         if (!is_value(anchor->as.table.ptr[i].as.kv.value)) {
-            delete(&anchor->as.table.ptr[i]);
+            delete (&anchor->as.table.ptr[i]);
         }
     }
     mem_free_table(anchor->as.table.ptr, n);
@@ -424,11 +425,10 @@ void delete (HamtNode *anchor)
 
 void hamt_delete(HAMT trie)
 {
-  delete(trie->root);
-  mem_free(trie->root);
-  mem_free(trie);
+    delete (trie->root);
+    mem_free(trie->root);
+    mem_free(trie);
 }
-
 
 static void debug_print(const HamtNode *node, size_t depth)
 {
