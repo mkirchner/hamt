@@ -12,14 +12,21 @@ CPPFLAGS ?= $(INC_FLAGS) -MMD -MP -g -O0
 
 # tests source the C file; filter object file to avoid
 # duplicate symbols for the linker
-TEST_OBJS = $(filter-out %/hamt.c.o,$(OBJS))
+TEST_OBJS = $(filter-out %/hamt.c.o %/perf.c.o,$(OBJS))
+PERF_OBJS = $(filter-out %/test_hamt.c.o,$(OBJS))
 
 test: $(BUILD_DIR)/test/test_hamt
 	$(BUILD_DIR)/test/test_hamt
 
-
 $(BUILD_DIR)/test/test_hamt: $(TEST_OBJS)
 	$(CC) $(TEST_OBJS) -o $@ $(LDFLAGS)
+
+perf: $(BUILD_DIR)/test/perf
+	$(BUILD_DIR)/test/perf | tee $(BUILD_DIR)/test/perf.csv
+	python test/perf.py
+
+$(BUILD_DIR)/test/perf: $(PERF_OBJS)
+	$(CC) $(PERF_OBJS) -o $@ $(LDFLAGS)
 
 # c source
 $(BUILD_DIR)/%.c.o: %.c
