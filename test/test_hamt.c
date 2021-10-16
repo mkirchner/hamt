@@ -236,7 +236,7 @@ char *test_set_with_collisions()
 
     /* insert value and find it again */
     const HamtNode *new_node =
-        set(t->root, t->key_hash, t->key_cmp, &keys[2], &values[2]);
+        set(t, t->root, t->key_hash, t->key_cmp, &keys[2], &values[2]);
     Hash hash = {.key = &keys[2],
                  .hash_fn = t->key_hash,
                  .hash = t->key_hash(&keys[2], 0),
@@ -262,7 +262,7 @@ char *test_set_whole_enchilada_00()
     struct HamtImpl *t = hamt_create(my_hash_1, my_strncmp_1);
     for (size_t i = 0; i < 5; ++i) {
         // printf("setting (%c, %d)\n", data[i].key, data[i].value);
-        set(t->root, t->key_hash, t->key_cmp, &data[i].key, &data[i].value);
+        set(t, t->root, t->key_hash, t->key_cmp, &data[i].key, &data[i].value);
         // debug_print(t->root, 4);
     }
 
@@ -322,7 +322,7 @@ char *test_set_stringkeys()
     struct HamtImpl *t = hamt_create(my_keyhash_string, my_keycmp_string);
     for (size_t i = 0; i < 6; ++i) {
         // printf("setting (%s, %d)\n", data[i].key, data[i].value);
-        set(t->root, t->key_hash, t->key_cmp, data[i].key, &data[i].value);
+        set(t, t->root, t->key_hash, t->key_cmp, data[i].key, &data[i].value);
         // debug_print_string(t->root, 4);
     }
 
@@ -492,7 +492,7 @@ char *test_remove()
 
         // debug_print_string(0, t->root, 4);
         for (size_t i = 0; i < N; ++i) {
-            set(t->root, t->key_hash, t->key_cmp, data[i].key, &data[i].value);
+            set(t, t->root, t->key_hash, t->key_cmp, data[i].key, &data[i].value);
         }
 
         // debug_print_string(0, t->root, 4);
@@ -534,7 +534,30 @@ static char *test_create_delete()
     } data[6] = {{"humpty", 1}, {"dumpty", 2}, {"sat", 3},
                  {"on", 4},     {"the", 5},    {"wall", 6}};
     for (size_t i = 0; i < 6; ++i) {
-        set(t->root, t->key_hash, t->key_cmp, data[i].key, &data[i].value);
+        set(t, t->root, t->key_hash, t->key_cmp, data[i].key, &data[i].value);
+    }
+    hamt_delete(t);
+    return 0;
+}
+
+static char *test_size()
+{
+    printf(". testing tree size tracking\n");
+    struct HamtImpl *t;
+    t = hamt_create(my_keyhash_string, my_keycmp_string);
+    enum { N=6 };
+    struct {
+        char *key;
+        int value;
+    } data[N] = {{"humpty", 1}, {"dumpty", 2}, {"sat", 3},
+                 {"on", 4},     {"the", 5},    {"wall", 6}};
+    for (size_t i = 0; i < N; ++i) {
+        hamt_set(t, data[i].key, &data[i].value);
+        mu_assert(hamt_size(t) == (i+1), "Wrong tree size during set");
+    }
+    for (size_t i = 0; i < N; ++i) {
+        hamt_remove(t, data[i].key);
+        mu_assert(hamt_size(t) == (N-1-i), "Wrong tree size during remove");
     }
     hamt_delete(t);
     return 0;
@@ -557,6 +580,7 @@ static char *test_suite()
     mu_run_test(test_gather_table);
     mu_run_test(test_remove);
     mu_run_test(test_create_delete);
+    mu_run_test(test_size);
     // add more tests here
     return 0;
 }
