@@ -8,7 +8,52 @@
 
 #include "../src/hamt.c"
 
-// #define hamt_delete(x) do {} while(0)
+
+static void debug_print(const HamtNode *node, size_t depth)
+{
+    /* print node*/
+    if (!is_value(node->as.kv.value)) {
+        printf("%*s%s", (int)depth * 2, "", "[ ");
+        for (size_t i = 0; i < 32; ++i) {
+            if (node->as.table.index & (1 << i)) {
+                printf("%2lu ", i);
+            }
+        }
+        printf("]\n");
+        /* print table */
+        int n = get_popcount(node->as.table.index);
+        for (int i = 0; i < n; ++i) {
+            debug_print(&node->as.table.ptr[i], depth + 1);
+        }
+    } else {
+        /* print value */
+        printf("%*s(%c, %d)\n", (int)depth * 2, "", *(char *)node->as.kv.key,
+               *(int *)untagged(node->as.kv.value));
+    }
+}
+
+static void debug_print_string(size_t ix, const HamtNode *node, size_t depth)
+{
+    /* print node*/
+    if (!is_value(node->as.kv.value)) {
+        printf("%*s%lu : %s", (int)depth * 2, "", ix, "[ ");
+        for (size_t i = 0; i < 32; ++i) {
+            if (node->as.table.index & (1 << i)) {
+                printf("%2lu(%i) ", i, get_pos(i, node->as.table.index));
+            }
+        }
+        printf("%s", "]\n");
+        /* print table */
+        int n = get_popcount(node->as.table.index);
+        for (int i = 0; i < n; ++i) {
+            debug_print_string(i, &node->as.table.ptr[i], depth + 1);
+        }
+    } else {
+        /* print value */
+        printf("%*s +- (%lu): (%s, %i)\n", (int)depth * 2, "", ix,
+               (char *)node->as.kv.key, *(int *)untagged(node->as.kv.value));
+    }
+}
 
 static char *test_popcount()
 {
