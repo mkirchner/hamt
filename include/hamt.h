@@ -3,7 +3,6 @@
 
 #include <stddef.h>
 #include <stdint.h>
-#include <stdio.h>
 
 typedef int (*HamtCmpFn)(const void *lhs, const void *rhs);
 typedef uint32_t (*HamtKeyHashFn)(const void *key, const size_t gen);
