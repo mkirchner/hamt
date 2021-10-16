@@ -45,6 +45,7 @@ typedef struct HamtNode {
 /* Opaque user-facing implementation */
 struct HamtImpl {
     struct HamtNode *root;
+    size_t size;
     HamtKeyHashFn key_hash;
     HamtCmpFn key_cmp;
 };
@@ -109,21 +110,22 @@ static int get_pos(uint32_t sparse_index, uint32_t bitmap)
     return get_popcount(bitmap & ((1 << sparse_index) - 1));
 }
 
-HAMT hamt_create(HamtKeyHashFn key_hash, HamtCmpFn key_cmp)
-{
-    struct HamtImpl *trie = mem_alloc(sizeof(struct HamtImpl));
-    trie->root = mem_alloc(sizeof(HamtNode));
-    memset(trie->root, 0, sizeof(HamtNode));
-    trie->key_hash = key_hash;
-    trie->key_cmp = key_cmp;
-    return trie;
-}
-
 static inline bool has_index(const HamtNode *anchor, size_t index)
 {
     assert(anchor && "anchor must not be NULL");
     assert(index < 32 && "index must not be larger than 31");
     return anchor->as.table.index & (1 << index);
+}
+
+HAMT hamt_create(HamtKeyHashFn key_hash, HamtCmpFn key_cmp)
+{
+    struct HamtImpl *trie = mem_alloc(sizeof(struct HamtImpl));
+    trie->root = mem_alloc(sizeof(HamtNode));
+    memset(trie->root, 0, sizeof(HamtNode));
+    trie->size = 0;
+    trie->key_hash = key_hash;
+    trie->key_cmp = key_cmp;
+    return trie;
 }
 
 static SearchResult search(HamtNode *anchor, Hash hash, HamtCmpFn cmp_eq,
@@ -180,6 +182,7 @@ HamtNode *mem_extend_table(HamtNode *anchor, size_t n_rows, uint32_t index,
                            uint32_t pos)
 {
     HamtNode *new_table = mem_allocate_table(n_rows + 1);
+    if (!new_table) return NULL;
     if (n_rows > 0) {
         /* copy over table */
         memcpy(&new_table[0], &anchor->as.table.ptr[0], pos * sizeof(HamtNode));
@@ -208,6 +211,7 @@ HamtNode *mem_shrink_table(HamtNode *anchor, size_t n_rows, uint32_t index,
     uint32_t new_index = 0;
     if (n_rows > 0) {
         new_table = mem_allocate_table(n_rows - 1);
+        if (!new_table) return NULL;
         new_index = anchor->as.table.index & ~(1 << index);
         memcpy(&new_table[0], &anchor->as.table.ptr[0], pos * sizeof(HamtNode));
         memcpy(&new_table[pos], &anchor->as.table.ptr[pos + 1],
@@ -246,6 +250,7 @@ static const HamtNode *insert_kv(HamtNode *anchor, Hash hash, void *key,
     /* extend table */
     size_t n_rows = get_popcount(anchor->as.table.index);
     anchor = mem_extend_table(anchor, n_rows, ix, pos);
+    if (!anchor) return NULL;
     HamtNode *new_table = anchor->as.table.ptr;
     /* set new k/v pair */
     new_table[pos].as.kv.key = key;
@@ -257,6 +262,9 @@ static const HamtNode *insert_kv(HamtNode *anchor, Hash hash, void *key,
 static const HamtNode *insert_table(HamtNode *anchor, Hash hash, void *key,
                                     void *value)
 {
+    /* FIXME: check for alloc failure and bail out correctly (deleting the
+     *        incomplete subtree */
+
     /* Collect everything we know about the existing value */
     Hash x_hash = {.key = anchor->as.kv.key,
                    .hash_fn = hash.hash_fn,
@@ -298,7 +306,7 @@ static const HamtNode *insert_table(HamtNode *anchor, Hash hash, void *key,
     return &anchor->as.table.ptr[pos];
 }
 
-static const HamtNode *set(HamtNode *anchor, HamtKeyHashFn hash_fn,
+static const HamtNode *set(HAMT h, HamtNode *anchor, HamtKeyHashFn hash_fn,
                            HamtCmpFn cmp_fn, void *key, void *value)
 {
     Hash hash = {.key = key,
@@ -307,15 +315,24 @@ static const HamtNode *set(HamtNode *anchor, HamtKeyHashFn hash_fn,
                  .depth = 0,
                  .shift = 0};
     SearchResult sr = search(anchor, hash, cmp_fn, key);
+    const HamtNode *inserted;
     switch (sr.status) {
     case SEARCH_SUCCESS:
         sr.value->as.kv.value = tagged(value);
-        return sr.value;
+        inserted = sr.value;
+        break;
     case SEARCH_FAIL_NOTFOUND:
-        return insert_kv(sr.anchor, sr.hash, key, value);
+        if ((inserted = insert_kv(sr.anchor, sr.hash, key, value)) != NULL) {
+          h->size += 1;
+        }
+        break;
     case SEARCH_FAIL_KEYMISMATCH:
-        return insert_table(sr.value, sr.hash, key, value);
+        if ((inserted = insert_table(sr.value, sr.hash, key, value)) != NULL) {
+          h->size += 1;
+        }
+        break;
     }
+    return inserted;
 }
 
 const void *hamt_get(const HAMT trie, void *key)
@@ -335,7 +352,7 @@ const void *hamt_get(const HAMT trie, void *key)
 const void *hamt_set(HAMT trie, void *key, void *value)
 {
     const HamtNode *n =
-        set(trie->root, trie->key_hash, trie->key_cmp, key, value);
+        set(trie, trie->root, trie->key_hash, trie->key_cmp, key, value);
     return n->as.kv.value;
 }
 
@@ -405,9 +422,11 @@ void *hamt_remove(HAMT trie, void *key)
                  .depth = 0,
                  .shift = 0};
     RemoveResult rr = rem(trie->root, trie->root, hash, trie->key_cmp, key);
-    return rr.status == REMOVE_SUCCESS || rr.status == REMOVE_GATHERED
-               ? untagged(rr.value)
-               : NULL;
+    if (rr.status == REMOVE_SUCCESS || rr.status == REMOVE_GATHERED) {
+      trie->size -= 1;
+      return untagged(rr.value);
+    }
+    return NULL;
 }
 
 void delete (HamtNode *anchor)
@@ -428,6 +447,11 @@ void hamt_delete(HAMT trie)
     delete (trie->root);
     mem_free(trie->root);
     mem_free(trie);
+}
+
+size_t hamt_size(HAMT trie)
+{
+  return trie->size;
 }
 
 static void debug_print(const HamtNode *node, size_t depth)
