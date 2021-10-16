@@ -449,7 +449,7 @@ void hamt_delete(HAMT trie)
     mem_free(trie);
 }
 
-size_t hamt_size(HAMT trie)
+size_t hamt_size(const HAMT trie)
 {
   return trie->size;
 }
