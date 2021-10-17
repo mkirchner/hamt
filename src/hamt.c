@@ -3,6 +3,7 @@
 #include <assert.h>
 #include <stdbool.h>
 #include <stdint.h>
+#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
@@ -439,5 +440,128 @@ void hamt_delete(HAMT trie)
 
 size_t hamt_size(const HAMT trie)
 {
-  return trie->size;
+    return trie->size;
+}
+
+struct HamtIteratorItem
+{
+    HamtNode *anchor;
+    size_t pos;
+    struct HamtIteratorItem *next;
+};
+
+
+struct HamtIteratorImpl
+{
+    HAMT trie;
+    HamtNode *cur;
+    struct HamtIteratorItem *head, *tail;
+};
+
+static struct HamtIteratorItem* iterator_push_item(HamtIterator it, HamtNode *anchor, size_t pos)
+{
+    /* append at the end */
+    struct HamtIteratorItem* new_item = malloc(sizeof(struct HamtIteratorItem));
+    if (new_item) {
+        new_item->anchor = anchor;
+        new_item->pos = pos;
+        new_item->next = NULL;
+        if (it->tail) {
+            it->tail->next = new_item;
+        } else {
+            /* first insert */
+            it->tail = it->head = new_item;
+        }
+    }
+    return new_item;
+}
+
+static struct HamtIteratorItem* iterator_peek_item(HamtIterator it)
+{
+    return it->head;
+}
+
+static struct HamtIteratorItem* iterator_pop_item(HamtIterator it)
+{
+    /* pop from front */
+    struct HamtIteratorItem* top = it->head;
+    it->head = it->head->next;
+    return top;
+}
+
+HamtIterator hamt_it_create(const HAMT trie)
+{
+    struct HamtIteratorImpl* it = mem_alloc(sizeof(struct HamtIteratorImpl));
+    it->trie = trie;
+    it->cur = NULL;
+    it->head = it->tail = NULL;
+    iterator_push_item(it, trie->root, 0);
+    it->head = it->tail;
+    hamt_it_next(it);
+    return it;
+}
+
+void hamt_it_delete(HamtIterator it)
+{
+    struct HamtIteratorItem *p = it->head;
+    struct HamtIteratorItem *tmp;
+    while (p) {
+        tmp = p;
+        p = p->next;
+        mem_free(tmp);
+    }
+    mem_free(it);
+}
+
+#define TABLE(a) a->as.table.ptr
+#define INDEX(a) a->as.table.index
+#define VALUE(a) a->as.kv.value
+#define KEY(a) a->as.kv.key
+
+inline bool hamt_it_valid(HamtIterator it)
+{
+    return it->cur != NULL;
+}
+
+HamtIterator hamt_it_next(HamtIterator it)
+{
+    struct HamtIteratorItem *p;
+    while (it && (p = iterator_peek_item(it)) != NULL) {
+        int n_rows = get_popcount(INDEX(p->anchor));
+        // printf("anchor size: %i; p->pos: %lu\n", n_rows, p->pos);
+        for (int i = p->pos; i < n_rows; ++i) {
+            // printf("pos: %i of %i\n", i, n_rows);
+            HamtNode *cur = &TABLE(p->anchor)[i];
+            if (is_value(VALUE(cur))) {
+                if (i < n_rows - 1) {
+                    p->pos = i + 1;
+                } else {
+                    iterator_pop_item(it);
+                }
+                it->cur = cur;
+                return it;
+            }
+            /* cur is a pointer to a subtable */
+            iterator_push_item(it, cur, 0);
+        }
+        iterator_pop_item(it);
+    }
+    it->cur = NULL;
+    return it;
+}
+
+const void *hamt_it_get_key(HamtIterator it)
+{
+    if (it->cur) {
+        return KEY(it->cur);
+    }
+    return NULL;
+}
+
+const void *hamt_it_get_value(HamtIterator it)
+{
+    if (it->cur) {
+        return untagged(VALUE(it->cur));
+    }
+    return NULL;
 }
