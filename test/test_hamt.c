@@ -165,6 +165,7 @@ static char *test_search()
     */
 
     char keys[] = "02478c";
+    /* uncomment to get the hashes
     char buf[38];
     for (size_t i = 0; i < 6; ++i) {
         uint32_t hash = my_hash_1(&keys[i], 0);
@@ -172,6 +173,7 @@ static char *test_search()
         print_keys(hash);
         printf("]\n");
     }
+    */
 
     /*
      * We're now manually building the trie corresponding to the data above:
@@ -608,6 +610,60 @@ static char *test_size()
     return 0;
 }
 
+static char *test_iterators()
+{
+    printf(". testing iterators\n");
+    struct HamtImpl *t;
+
+    struct {
+        char *key;
+        int value;
+    } data[6] = {{"humpty", 1}, {"dumpty", 2}, {"sat", 3},
+                 {"on", 4},     {"the", 5},    {"wall", 6}};
+
+    struct {
+        char *key;
+        int value;
+    } expected[6] = {
+      {"the", 5},
+      {"on", 4},
+      {"wall", 6},
+      {"sat", 3},
+      {"humpty", 1},
+      {"dumpty", 2}
+    };
+
+
+    t = hamt_create(my_keyhash_string, my_keycmp_string);
+
+    /* test create/delete */
+
+    HamtIterator it = hamt_it_create(t);
+    hamt_it_next(it);
+    mu_assert(it->cur == NULL, "iteration fail for empty trie");
+    hamt_it_delete(it);
+
+    for (size_t i = 0; i < 6; ++i) {
+        hamt_set(t, data[i].key, &data[i].value);
+    }
+    it = hamt_it_create(t);
+    size_t count = 0;
+    while(hamt_it_valid(it)) {
+        mu_assert(strcmp((char*)hamt_it_get_key(it), expected[count].key) == 0,
+            "Unexpected key in iteration");
+        mu_assert(*(int*)hamt_it_get_value(it) == expected[count].value,
+            "Unexpected value in iteration");
+        count += 1;
+        hamt_it_next(it);
+    }
+    mu_assert(count == 6, "Wrong number of items in iteration");
+    hamt_it_delete(it);
+
+    hamt_delete(t);
+    return 0;
+}
+
+
 int tests_run = 0;
 
 static char *test_suite()
@@ -626,6 +682,7 @@ static char *test_suite()
     mu_run_test(test_remove);
     mu_run_test(test_create_delete);
     mu_run_test(test_size);
+    mu_run_test(test_iterators);
     // add more tests here
     return 0;
 }

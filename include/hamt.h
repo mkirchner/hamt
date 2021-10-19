@@ -1,6 +1,7 @@
 #ifndef HAMT_H
 #define HAMT_H
 
+#include <stdbool.h>
 #include <stddef.h>
 #include <stdint.h>
 
@@ -16,5 +17,14 @@ const void *hamt_get(const HAMT trie, void *key);
 const void *hamt_set(HAMT trie, void *key, void *value);
 void *hamt_remove(HAMT trie, void *key);
 size_t hamt_size(const HAMT trie);
+
+typedef struct HamtIteratorImpl *HamtIterator;
+
+HamtIterator hamt_it_create(const HAMT trie);
+void hamt_it_delete(HamtIterator it);
+bool hamt_it_valid(HamtIterator it);
+HamtIterator hamt_it_next(HamtIterator it);
+const void *hamt_it_get_key(HamtIterator it);
+const void *hamt_it_get_value(HamtIterator it);
 
 #endif /* HAMT_H */

@@ -10,7 +10,7 @@ A hash array-mapped trie implementation in C. This is work in progress.
 - [x] `hamt_size(handle)`
 - [x] `hamt_delete(handle)`
 - [x] Pull debug code from `hamt.c`
-- [ ] iteration over contents (unsorted, stable)
+- [x] iteration over contents (unsorted, stable)
 - [ ] typing solution (`#define *_TYPE` and `#include` approach?)
 - [ ] clean up
   - [ ] anchor concept vs. table gather
