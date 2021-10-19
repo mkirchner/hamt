@@ -8,7 +8,6 @@
 
 #include "../src/hamt.c"
 
-
 static void debug_print(const HamtNode *node, size_t depth)
 {
     /* print node*/
@@ -539,7 +538,8 @@ char *test_remove()
 
         // debug_print_string(0, t->root, 4);
         for (size_t i = 0; i < N; ++i) {
-            set(t, t->root, t->key_hash, t->key_cmp, data[i].key, &data[i].value);
+            set(t, t->root, t->key_hash, t->key_cmp, data[i].key,
+                &data[i].value);
         }
 
         // debug_print_string(0, t->root, 4);
@@ -592,7 +592,7 @@ static char *test_size()
     printf(". testing tree size tracking\n");
     struct HamtImpl *t;
     t = hamt_create(my_keyhash_string, my_keycmp_string);
-    enum { N=6 };
+    enum { N = 6 };
     struct {
         char *key;
         int value;
@@ -600,11 +600,11 @@ static char *test_size()
                  {"on", 4},     {"the", 5},    {"wall", 6}};
     for (size_t i = 0; i < N; ++i) {
         hamt_set(t, data[i].key, &data[i].value);
-        mu_assert(hamt_size(t) == (i+1), "Wrong tree size during set");
+        mu_assert(hamt_size(t) == (i + 1), "Wrong tree size during set");
     }
     for (size_t i = 0; i < N; ++i) {
         hamt_remove(t, data[i].key);
-        mu_assert(hamt_size(t) == (N-1-i), "Wrong tree size during remove");
+        mu_assert(hamt_size(t) == (N - 1 - i), "Wrong tree size during remove");
     }
     hamt_delete(t);
     return 0;
@@ -624,15 +624,8 @@ static char *test_iterators()
     struct {
         char *key;
         int value;
-    } expected[6] = {
-      {"the", 5},
-      {"on", 4},
-      {"wall", 6},
-      {"sat", 3},
-      {"humpty", 1},
-      {"dumpty", 2}
-    };
-
+    } expected[6] = {{"the", 5}, {"on", 4},     {"wall", 6},
+                     {"sat", 3}, {"humpty", 1}, {"dumpty", 2}};
 
     t = hamt_create(my_keyhash_string, my_keycmp_string);
 
@@ -648,11 +641,11 @@ static char *test_iterators()
     }
     it = hamt_it_create(t);
     size_t count = 0;
-    while(hamt_it_valid(it)) {
-        mu_assert(strcmp((char*)hamt_it_get_key(it), expected[count].key) == 0,
-            "Unexpected key in iteration");
-        mu_assert(*(int*)hamt_it_get_value(it) == expected[count].value,
-            "Unexpected value in iteration");
+    while (hamt_it_valid(it)) {
+        mu_assert(strcmp((char *)hamt_it_get_key(it), expected[count].key) == 0,
+                  "Unexpected key in iteration");
+        mu_assert(*(int *)hamt_it_get_value(it) == expected[count].value,
+                  "Unexpected value in iteration");
         count += 1;
         hamt_it_next(it);
     }
@@ -662,7 +655,6 @@ static char *test_iterators()
     hamt_delete(t);
     return 0;
 }
-
 
 int tests_run = 0;
 
