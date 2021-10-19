@@ -171,7 +171,8 @@ HamtNode *mem_extend_table(HamtNode *anchor, size_t n_rows, uint32_t index,
                            uint32_t pos)
 {
     HamtNode *new_table = mem_allocate_table(n_rows + 1);
-    if (!new_table) return NULL;
+    if (!new_table)
+        return NULL;
     if (n_rows > 0) {
         /* copy over table */
         memcpy(&new_table[0], &anchor->as.table.ptr[0], pos * sizeof(HamtNode));
@@ -200,7 +201,8 @@ HamtNode *mem_shrink_table(HamtNode *anchor, size_t n_rows, uint32_t index,
     uint32_t new_index = 0;
     if (n_rows > 0) {
         new_table = mem_allocate_table(n_rows - 1);
-        if (!new_table) return NULL;
+        if (!new_table)
+            return NULL;
         new_index = anchor->as.table.index & ~(1 << index);
         memcpy(&new_table[0], &anchor->as.table.ptr[0], pos * sizeof(HamtNode));
         memcpy(&new_table[pos], &anchor->as.table.ptr[pos + 1],
@@ -239,7 +241,8 @@ static const HamtNode *insert_kv(HamtNode *anchor, Hash hash, void *key,
     /* extend table */
     size_t n_rows = get_popcount(anchor->as.table.index);
     anchor = mem_extend_table(anchor, n_rows, ix, pos);
-    if (!anchor) return NULL;
+    if (!anchor)
+        return NULL;
     HamtNode *new_table = anchor->as.table.ptr;
     /* set new k/v pair */
     new_table[pos].as.kv.key = key;
@@ -312,12 +315,12 @@ static const HamtNode *set(HAMT h, HamtNode *anchor, HamtKeyHashFn hash_fn,
         break;
     case SEARCH_FAIL_NOTFOUND:
         if ((inserted = insert_kv(sr.anchor, sr.hash, key, value)) != NULL) {
-          h->size += 1;
+            h->size += 1;
         }
         break;
     case SEARCH_FAIL_KEYMISMATCH:
         if ((inserted = insert_table(sr.value, sr.hash, key, value)) != NULL) {
-          h->size += 1;
+            h->size += 1;
         }
         break;
     }
@@ -412,8 +415,8 @@ void *hamt_remove(HAMT trie, void *key)
                  .shift = 0};
     RemoveResult rr = rem(trie->root, trie->root, hash, trie->key_cmp, key);
     if (rr.status == REMOVE_SUCCESS || rr.status == REMOVE_GATHERED) {
-      trie->size -= 1;
-      return untagged(rr.value);
+        trie->size -= 1;
+        return untagged(rr.value);
     }
     return NULL;
 }
@@ -438,30 +441,25 @@ void hamt_delete(HAMT trie)
     mem_free(trie);
 }
 
-size_t hamt_size(const HAMT trie)
-{
-    return trie->size;
-}
+size_t hamt_size(const HAMT trie) { return trie->size; }
 
-struct HamtIteratorItem
-{
+struct HamtIteratorItem {
     HamtNode *anchor;
     size_t pos;
     struct HamtIteratorItem *next;
 };
 
-
-struct HamtIteratorImpl
-{
+struct HamtIteratorImpl {
     HAMT trie;
     HamtNode *cur;
     struct HamtIteratorItem *head, *tail;
 };
 
-static struct HamtIteratorItem* iterator_push_item(HamtIterator it, HamtNode *anchor, size_t pos)
+static struct HamtIteratorItem *iterator_push_item(HamtIterator it,
+                                                   HamtNode *anchor, size_t pos)
 {
     /* append at the end */
-    struct HamtIteratorItem* new_item = malloc(sizeof(struct HamtIteratorItem));
+    struct HamtIteratorItem *new_item = malloc(sizeof(struct HamtIteratorItem));
     if (new_item) {
         new_item->anchor = anchor;
         new_item->pos = pos;
@@ -476,22 +474,22 @@ static struct HamtIteratorItem* iterator_push_item(HamtIterator it, HamtNode *an
     return new_item;
 }
 
-static struct HamtIteratorItem* iterator_peek_item(HamtIterator it)
+static struct HamtIteratorItem *iterator_peek_item(HamtIterator it)
 {
     return it->head;
 }
 
-static struct HamtIteratorItem* iterator_pop_item(HamtIterator it)
+static struct HamtIteratorItem *iterator_pop_item(HamtIterator it)
 {
     /* pop from front */
-    struct HamtIteratorItem* top = it->head;
+    struct HamtIteratorItem *top = it->head;
     it->head = it->head->next;
     return top;
 }
 
 HamtIterator hamt_it_create(const HAMT trie)
 {
-    struct HamtIteratorImpl* it = mem_alloc(sizeof(struct HamtIteratorImpl));
+    struct HamtIteratorImpl *it = mem_alloc(sizeof(struct HamtIteratorImpl));
     it->trie = trie;
     it->cur = NULL;
     it->head = it->tail = NULL;
@@ -518,10 +516,7 @@ void hamt_it_delete(HamtIterator it)
 #define VALUE(a) a->as.kv.value
 #define KEY(a) a->as.kv.key
 
-inline bool hamt_it_valid(HamtIterator it)
-{
-    return it->cur != NULL;
-}
+inline bool hamt_it_valid(HamtIterator it) { return it->cur != NULL; }
 
 HamtIterator hamt_it_next(HamtIterator it)
 {
