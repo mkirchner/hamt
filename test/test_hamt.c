@@ -656,6 +656,37 @@ static char *test_iterators()
     return 0;
 }
 
+char *test_persistent_set()
+{
+    printf(". testing set/insert w/ string keys (persistent)\n");
+
+    /* test data, see above */
+    struct {
+        char *key;
+        int value;
+    } data[6] = {{"humpty", 1}, {"dumpty", 2}, {"sat", 3},
+                 {"on", 4},     {"the", 5},    {"wall", 6}};
+
+    struct HamtImpl *t = hamt_create(my_keyhash_string, my_keycmp_string);
+    struct HamtImpl *tmp = t;
+    struct HamtImpl *versions[6];
+    for (size_t i = 0; i < 6; ++i) {
+        tmp = hamt_pset(t, data[i].key, &data[i].value);
+        mu_assert(hamt_size(tmp) == hamt_size(t) + 1, "wrong trie size");
+        mu_assert(hamt_get(t, data[i].key) == NULL, "unexpected side effect");
+        mu_assert(hamt_get(tmp, data[i].key) == &data[i].value,
+                  "insert into copy failed");
+        versions[i] = t;
+        t = tmp;
+    }
+    /* FIXME this breaks
+    for (size_t i = 0; i < 6; ++i) {
+        hamt_delete(versions[i]);
+    }
+    */
+    return 0;
+}
+
 int tests_run = 0;
 
 static char *test_suite()
@@ -675,6 +706,8 @@ static char *test_suite()
     mu_run_test(test_create_delete);
     mu_run_test(test_size);
     mu_run_test(test_iterators);
+    // persistent data structure tests
+    mu_run_test(test_persistent_set);
     // add more tests here
     return 0;
 }
