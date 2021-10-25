@@ -219,7 +219,7 @@ static char *test_search()
 
     struct HamtImpl t;
     t.key_cmp = my_strncmp_1;
-    t.root = mem_alloc(sizeof(HamtNode));
+    t.root = hamt_alloc(&hamt_allocator_default, sizeof(HamtNode));
     t.root->as.table.index = (1 << 8) | (1 << 23) | (1 << 31);
     t.root->as.table.ptr = t_root;
 
@@ -265,7 +265,8 @@ static char *test_search()
 char *test_set_with_collisions()
 {
     printf(". testing set/insert w/ forced key collision\n");
-    struct HamtImpl *t = hamt_create(my_hash_1, my_strncmp_1);
+    struct HamtImpl *t =
+        hamt_create(my_hash_1, my_strncmp_1, &hamt_allocator_default);
 
     /* example 1: no hash collisions */
     char keys[] = "028";
@@ -305,7 +306,8 @@ char *test_set_whole_enchilada_00()
         int value;
     } data[5] = {{'0', 0}, {'2', 2}, {'4', 4}, {'7', 7}, {'8', 8}};
 
-    struct HamtImpl *t = hamt_create(my_hash_1, my_strncmp_1);
+    struct HamtImpl *t =
+        hamt_create(my_hash_1, my_strncmp_1, &hamt_allocator_default);
     for (size_t i = 0; i < 5; ++i) {
         // printf("setting (%c, %d)\n", data[i].key, data[i].value);
         set(t, t->root, t->key_hash, t->key_cmp, &data[i].key, &data[i].value);
@@ -365,7 +367,8 @@ char *test_set_stringkeys()
     } data[6] = {{"humpty", 1}, {"dumpty", 2}, {"sat", 3},
                  {"on", 4},     {"the", 5},    {"wall", 6}};
 
-    struct HamtImpl *t = hamt_create(my_keyhash_string, my_keycmp_string);
+    struct HamtImpl *t = hamt_create(my_keyhash_string, my_keycmp_string,
+                                     &hamt_allocator_default);
     for (size_t i = 0; i < 6; ++i) {
         // printf("setting (%s, %d)\n", data[i].key, data[i].value);
         set(t, t->root, t->key_hash, t->key_cmp, data[i].key, &data[i].value);
@@ -405,7 +408,8 @@ char *test_aspell_dict_en()
     fp = fopen("test/words", "r");
     mu_assert(fp, "Failed to open test dictionary");
 
-    struct HamtImpl *t = hamt_create(my_keyhash_string, my_keycmp_string);
+    struct HamtImpl *t = hamt_create(my_keyhash_string, my_keycmp_string,
+                                     &hamt_allocator_default);
 
     while ((n = getline(&line, &len, fp)) != -1) {
         k = line[n - 1] == '\n' ? n - 1 : n;
@@ -462,15 +466,16 @@ static char *test_shrink_table()
     /* create table w/ 5 entries and delete each position */
     for (size_t delete_pos = 0; delete_pos < N; delete_pos++) {
 
-        HamtNode *a0 = mem_alloc(sizeof(HamtNode));
-        a0->as.table.ptr = mem_allocate_table(N);
+        HamtNode *a0 = hamt_allocator_default.malloc(sizeof(HamtNode));
+        a0->as.table.ptr = table_allocate(&hamt_allocator_default, N);
         for (size_t i = 0; i < N; ++i) {
             a0->as.table.index |= (1 << data[i].index);
             a0->as.table.ptr[i].as.kv.key = (void *)data[i].key;
             a0->as.table.ptr[i].as.kv.value = tagged(&data[i].value);
         }
         uint32_t delete_index = data[delete_pos].index;
-        HamtNode *a1 = mem_shrink_table(a0, N, delete_index, delete_pos);
+        HamtNode *a1 = table_shrink(&hamt_allocator_default, a0, N,
+                                    delete_index, delete_pos);
         mu_assert(get_popcount(a1->as.table.index) == N - 1,
                   "wrong number of rows");
         size_t diff = 0;
@@ -485,8 +490,8 @@ static char *test_shrink_table()
                           untagged(a1->as.table.ptr[i - diff].as.kv.value),
                       "unexpected value in shrunk table");
         }
-        mem_free_table(a1->as.table.ptr, 4);
-        mem_free(a1);
+        table_free(&hamt_allocator_default, a1->as.table.ptr, 4);
+        hamt_free(&hamt_allocator_default, a1);
     }
     return 0;
 }
@@ -502,16 +507,16 @@ static char *test_gather_table()
         int index;
     } data[N] = {{"0", 0, 1}, {"2", 2, 3}};
 
-    HamtNode *a0 = mem_alloc(sizeof(HamtNode));
+    HamtNode *a0 = hamt_alloc(&hamt_allocator_default, sizeof(HamtNode));
     a0->as.table.index = 0;
-    a0->as.table.ptr = mem_allocate_table(N);
+    a0->as.table.ptr = table_allocate(&hamt_allocator_default, N);
     for (size_t i = 0; i < N; ++i) {
         a0->as.table.index |= (1 << data[i].index);
         a0->as.table.ptr[i].as.kv.key = (void *)data[i].key;
         a0->as.table.ptr[i].as.kv.value = tagged(&data[i].value);
     }
 
-    HamtNode *a1 = mem_gather_table(a0, 0);
+    HamtNode *a1 = table_gather(&hamt_allocator_default, a0, 0);
 
     mu_assert(a1->as.kv.key == data[0].key, "wrong key in gather");
     mu_assert(untagged(a1->as.kv.value) == (void *)&data[0].value,
@@ -530,7 +535,8 @@ char *test_remove()
     } data[N] = {{"humpty", 1}, {"dumpty", 2}, {"sat", 3},
                  {"on", 4},     {"the", 5},    {"wall", 6}};
 
-    struct HamtImpl *t = hamt_create(my_keyhash_string, my_keycmp_string);
+    struct HamtImpl *t = hamt_create(my_keyhash_string, my_keycmp_string,
+                                     &hamt_allocator_default);
 
     // printf("=========================\n");
     for (size_t k = 0; k < 3; ++k) {
@@ -553,7 +559,7 @@ char *test_remove()
             // printf("removing %s from pre-removal trie:\n", data[i].key);
             // debug_print_string(0, t->root, 4);
             RemoveResult rr =
-                rem(t->root, t->root, hash, t->key_cmp, data[i].key);
+                rem(t, t->root, t->root, hash, t->key_cmp, data[i].key);
             mu_assert(rr.status == REMOVE_SUCCESS ||
                           rr.status == REMOVE_GATHERED,
                       "failed to find inserted value");
@@ -571,10 +577,12 @@ static char *test_create_delete()
 {
     printf(". testing create/delete cycle\n");
     struct HamtImpl *t;
-    t = hamt_create(my_keyhash_string, my_keycmp_string);
+    t = hamt_create(my_keyhash_string, my_keycmp_string,
+                    &hamt_allocator_default);
     hamt_delete(t);
 
-    t = hamt_create(my_keyhash_string, my_keycmp_string);
+    t = hamt_create(my_keyhash_string, my_keycmp_string,
+                    &hamt_allocator_default);
     struct {
         char *key;
         int value;
@@ -591,7 +599,8 @@ static char *test_size()
 {
     printf(". testing tree size tracking\n");
     struct HamtImpl *t;
-    t = hamt_create(my_keyhash_string, my_keycmp_string);
+    t = hamt_create(my_keyhash_string, my_keycmp_string,
+                    &hamt_allocator_default);
     enum { N = 6 };
     struct {
         char *key;
@@ -627,14 +636,15 @@ static char *test_iterators()
     } expected[6] = {{"the", 5}, {"on", 4},     {"wall", 6},
                      {"sat", 3}, {"humpty", 1}, {"dumpty", 2}};
 
-    t = hamt_create(my_keyhash_string, my_keycmp_string);
+    t = hamt_create(my_keyhash_string, my_keycmp_string,
+                    &hamt_allocator_default);
 
     /* test create/delete */
 
     HamtIterator it = hamt_it_create(t);
     hamt_it_next(it);
     mu_assert(it->cur == NULL, "iteration fail for empty trie");
-    hamt_it_delete(it);
+    hamt_it_delete(t, it);
 
     for (size_t i = 0; i < 6; ++i) {
         hamt_set(t, data[i].key, &data[i].value);
@@ -650,7 +660,7 @@ static char *test_iterators()
         hamt_it_next(it);
     }
     mu_assert(count == 6, "Wrong number of items in iteration");
-    hamt_it_delete(it);
+    hamt_it_delete(t, it);
 
     hamt_delete(t);
     return 0;
