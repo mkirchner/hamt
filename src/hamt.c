@@ -529,9 +529,7 @@ HamtIterator hamt_it_next(HamtIterator it)
     struct HamtIteratorItem *p;
     while (it && (p = iterator_peek_item(it)) != NULL) {
         int n_rows = get_popcount(INDEX(p->anchor));
-        // printf("anchor size: %i; p->pos: %lu\n", n_rows, p->pos);
         for (int i = p->pos; i < n_rows; ++i) {
-            // printf("pos: %i of %i\n", i, n_rows);
             HamtNode *cur = &TABLE(p->anchor)[i];
             if (is_value(VALUE(cur))) {
                 if (i < n_rows - 1) {
@@ -629,7 +627,7 @@ static SearchResult path_copy_search(HamtNode *anchor, Hash hash,
             /* For table entries, recurse to the next level */
             assert(TABLE(next) != NULL &&
                    "invariant: table ptrs must not be NULL");
-            return path_copy_search(next, hash_step(hash), cmp_eq, key, copy);
+            return path_copy_search(next, hash_step(hash), cmp_eq, key, next);
         }
     }
     /* expected index is not set, terminate search */

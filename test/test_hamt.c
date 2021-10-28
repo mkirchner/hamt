@@ -35,7 +35,7 @@ static void debug_print_string(size_t ix, const HamtNode *node, size_t depth)
 {
     /* print node*/
     if (!is_value(node->as.kv.value)) {
-        printf("%*s%lu : %s", (int)depth * 2, "", ix, "[ ");
+        printf("%*s +- (%lu): %s", (int)depth * 2, "", ix, "[ ");
         for (size_t i = 0; i < 32; ++i) {
             if (node->as.table.index & (1 << i)) {
                 printf("%2lu(%i) ", i, get_pos(i, node->as.table.index));
@@ -52,6 +52,34 @@ static void debug_print_string(size_t ix, const HamtNode *node, size_t depth)
         printf("%*s +- (%lu): (%s, %i)\n", (int)depth * 2, "", ix,
                (char *)node->as.kv.key, *(int *)untagged(node->as.kv.value));
     }
+}
+
+
+static void load_words(char ***words, size_t n_words)
+{
+    FILE *fp;
+    char *line = NULL;
+    size_t len = 0;
+    ssize_t n, k;
+
+    size_t i = 0;
+    fp = fopen("test/words", "r");
+    *words = calloc(n_words, sizeof(char *));
+    while ((n = getline(&line, &len, fp)) != -1 && i < n_words) {
+        k = line[n - 1] == '\n' ? n - 1 : n;
+        (*words)[i] = strndup(line, k);
+        line = NULL;
+        ++i;
+    }
+    fclose(fp);
+}
+
+static void free_words(char **words, size_t n)
+{
+    for (size_t i = 0; i < n; ++i) {
+        free(words[i]);
+    }
+    free(words);
 }
 
 static char *test_popcount()
@@ -669,21 +697,69 @@ char *test_persistent_set()
 
     struct HamtImpl *t = hamt_create(my_keyhash_string, my_keycmp_string);
     struct HamtImpl *tmp = t;
-    struct HamtImpl *versions[6];
     for (size_t i = 0; i < 6; ++i) {
         tmp = hamt_pset(t, data[i].key, &data[i].value);
         mu_assert(hamt_size(tmp) == hamt_size(t) + 1, "wrong trie size");
+        for (size_t k = 0; k <= i; k++) {
+            if (k<i) {
+                /* test if pre-insert keys are still accessible
+                 * in the original trie */
+                mu_assert(hamt_get(t, data[k].key) == &data[k].value,
+                        "failed to find all expected values in existing");
+            }
+            /* test is pre-insert keys and the new key are accessible
+             * in the new trie */
+            mu_assert(hamt_get(tmp, data[k].key) == &data[k].value,
+                    "failed to find all expected values in copy");
+        }
+        /* make sure that the new key is not accessible in the
+         * existing trie */
         mu_assert(hamt_get(t, data[i].key) == NULL, "unexpected side effect");
-        mu_assert(hamt_get(tmp, data[i].key) == &data[i].value,
-                  "insert into copy failed");
-        versions[i] = t;
         t = tmp;
     }
-    /* FIXME this breaks
-    for (size_t i = 0; i < 6; ++i) {
-        hamt_delete(versions[i]);
+    /* There is no way to cleanly free the structurally shared 
+     * tries without garbage collection. Leak them. */
+    return 0;
+}
+
+char *test_persistent_aspell_dict_en()
+{
+    printf(". testing large-scale set/insert w/ string keys (persistent)\n");
+
+    enum { N = 235886 };
+    char **words = NULL;
+    HAMT t;
+
+    load_words(&words, N);
+    t = hamt_create(my_keyhash_string, my_keycmp_string);
+    for (size_t i = 0; i < N; i++) {
+        /* structural sharing */
+        t = hamt_pset(t, words[i], words[i]);
     }
-    */
+
+    /* Check if we can retrieve the entire dictionary */
+    for (size_t i = 0; i < N; i++) {
+        mu_assert(hamt_get(t, words[i]) != NULL, "could not find expected key");
+    }
+
+    /* Check if "bluism" has search depth 7 */
+    char target[] = "bluism";
+    Hash hash = {.key = target,
+                 .hash_fn = my_keyhash_string,
+                 .hash = my_keyhash_string(target, 0),
+                 .depth = 0,
+                 .shift = 0};
+    SearchResult sr = search(t->root, hash, t->key_cmp, target);
+    mu_assert(sr.status == SEARCH_SUCCESS, "fail");
+    char *value = (char *)untagged(sr.value->as.kv.value);
+
+    mu_assert(value, "failed to retrieve existing value");
+    mu_assert(strcmp(value, target) == 0, "invalid value");
+    mu_assert(sr.hash.depth == 7, "invalid depth");
+
+    free_words(words, N);
+    /* There is no way to cleanly free the structurally shared 
+     * tries without garbage collection. Leak them. */
     return 0;
 }
 
@@ -708,6 +784,7 @@ static char *test_suite()
     mu_run_test(test_iterators);
     // persistent data structure tests
     mu_run_test(test_persistent_set);
+    mu_run_test(test_persistent_aspell_dict_en);
     // add more tests here
     return 0;
 }

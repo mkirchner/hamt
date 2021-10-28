@@ -31,10 +31,11 @@ A hash array-mapped trie implementation in C. This is work in progress.
 
 - [x] set up perf test tooling
 - [ ] decide on ref implementations
-- [.] implement perf tests suite
+- [ ] implement perf tests suite
 
 ### Immutability
 
-- [ ] path copying for `set` and `remove`
+- [x] path copying for `set`
+- [ ] path copying for `remove`
 
 
