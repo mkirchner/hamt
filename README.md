@@ -17,6 +17,8 @@ A hash array-mapped trie implementation in C. This is work in progress.
 - [ ] clean up
   - [ ] anchor concept vs. table gather
   - [ ] hash state management (pass by value vs pass by ref)
+  - [ ] nested conditional in inner remove logic is ugly
+  - [ ] TABLE(root) vs root in non-persistent vs persistent case checks
 - [ ] testing
   - [ ] add mem checks
   - [x] set up github actions
@@ -25,16 +27,15 @@ A hash array-mapped trie implementation in C. This is work in progress.
 ### Optimization
 
 - [ ] add custom allocator
-- [ ] remove recursion
+- [ ] remove recursion?
 
 ### Performance testing
 
 - [x] set up perf test tooling
 - [ ] decide on ref implementations
-- [.] implement perf tests suite
+- [ ] implement perf tests suite
 
 ### Immutability
 
-- [ ] path copying for `set` and `remove`
-
-
+- [x] path copying for `set`
+- [x] path copying for `remove`
