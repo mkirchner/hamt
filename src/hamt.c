@@ -70,11 +70,6 @@ typedef struct SearchResult {
     Hash hash;
 } SearchResult;
 
-typedef struct PathResult {
-    SearchResult sr;
-    HamtNode *root;
-} PathResult;
-
 /* Removal results */
 typedef enum { REMOVE_SUCCESS, REMOVE_GATHERED, REMOVE_NOTFOUND } RemoveStatus;
 
@@ -82,6 +77,15 @@ typedef struct RemoveResult {
     RemoveStatus status;
     void *value;
 } RemoveResult;
+
+typedef struct PathResult {
+    union {
+      SearchResult sr;
+      RemoveResult rr;
+    };
+    HamtNode *root;
+} PathResult;
+
 
 static inline Hash hash_step(const Hash h)
 {
@@ -230,14 +234,15 @@ HamtNode *mem_gather_table(HamtNode *anchor, uint32_t pos)
     assert(anchor && "Anchor cannot be NULL");
     assert(!is_value(VALUE(anchor)) &&
            "Invariant: gathering a table requires an internal anchor");
-    assert((get_popcount(INDEX(anchor)) == 2) &&
-           "Table must have size 2 to gather");
     assert((pos == 0 || pos == 1) && "pos must be 0 or 1");
 
+    int n_rows = get_popcount(INDEX(anchor));
+    assert((n_rows == 2 || n_rows == 1) &&
+           "Table must have size 1 or 2 to gather");
     HamtNode *table = TABLE(anchor);
     KEY(anchor) = table[pos].as.kv.key;
     VALUE(anchor) = table[pos].as.kv.value; /* already tagged */
-    mem_free_table(table, 2);
+    mem_free_table(table, n_rows);
     return anchor;
 }
 
@@ -384,10 +389,19 @@ static RemoveResult rem(HamtNode *root, HamtNode *anchor, Hash hash,
                     anchor =
                         mem_shrink_table(anchor, n_rows, expected_index, pos);
                 } else if (n_rows == 2) {
-                    /* gather, dropping the current row */
-                    anchor = mem_gather_table(anchor, !pos);
-                    return (RemoveResult){.status = REMOVE_GATHERED,
-                                          .value = value};
+                    HamtNode* first = &TABLE(anchor)[0];
+                    HamtNode* second = &TABLE(anchor)[1];
+                    /* if both rows are value rows, gather, dropping the current row */
+                    if (is_value(VALUE(first))
+                            && is_value(VALUE(second))) {
+                        anchor = mem_gather_table(anchor, !pos);
+                        return (RemoveResult){.status = REMOVE_GATHERED,
+                                              .value = value};
+                    } else {
+                        /* otherwise shrink the node to n_rows == 1 */
+                        anchor =
+                            mem_shrink_table(anchor, n_rows, expected_index, pos);
+                    }
                 }
                 return (RemoveResult){.status = REMOVE_SUCCESS, .value = value};
             }
@@ -589,7 +603,7 @@ HamtNode *mem_dup_table(HamtNode *anchor)
     return new_table;
 }
 
-static SearchResult path_copy_search(HamtNode *anchor, Hash hash,
+static SearchResult path_copy_search_recurse(HamtNode *anchor, Hash hash,
                                      HamtCmpFn cmp_eq, const void *key,
                                      HamtNode *copy)
 {
@@ -627,7 +641,7 @@ static SearchResult path_copy_search(HamtNode *anchor, Hash hash,
             /* For table entries, recurse to the next level */
             assert(TABLE(next) != NULL &&
                    "invariant: table ptrs must not be NULL");
-            return path_copy_search(next, hash_step(hash), cmp_eq, key, next);
+            return path_copy_search_recurse(next, hash_step(hash), cmp_eq, key, next);
         }
     }
     /* expected index is not set, terminate search */
@@ -638,12 +652,12 @@ static SearchResult path_copy_search(HamtNode *anchor, Hash hash,
     return result;
 }
 
-static PathResult path_copy(HamtNode *anchor, Hash hash, HamtCmpFn cmp_eq,
+static PathResult path_copy_search(HamtNode *anchor, Hash hash, HamtCmpFn cmp_eq,
                             const void *key)
 {
     PathResult pr;
     pr.root = mem_alloc(sizeof(HamtNode));
-    pr.sr = path_copy_search(anchor, hash, cmp_eq, key, pr.root);
+    pr.sr = path_copy_search_recurse(anchor, hash, cmp_eq, key, pr.root);
     return pr;
 }
 
@@ -656,7 +670,7 @@ static const HAMT pset(HAMT h, HamtNode *anchor, HamtKeyHashFn hash_fn,
                  .depth = 0,
                  .shift = 0};
     HAMT cp = hamt_dup(h);
-    PathResult pr = path_copy(anchor, hash, cmp_fn, key);
+    PathResult pr = path_copy_search(anchor, hash, cmp_fn, key);
     cp->root = pr.root;
     switch (pr.sr.status) {
     case SEARCH_SUCCESS:
@@ -680,3 +694,97 @@ const HAMT hamt_pset(HAMT trie, void *key, void *value)
 {
     return pset(trie, trie->root, trie->key_hash, trie->key_cmp, key, value);
 }
+
+static RemoveResult path_copy_rem_recurse(HamtNode *root, HamtNode *anchor, Hash hash,
+                        HamtCmpFn cmp_eq, const void *key, HamtNode* copy)
+{
+    assert(!is_value(VALUE(anchor)) &&
+           "Invariant: removal requires an internal node");
+    /* copy the table we're pointing to */
+    TABLE(copy) = mem_dup_table(anchor);
+    INDEX(copy) = INDEX(anchor);
+    assert(!is_value(VALUE(copy)) && "Copy caused a leaf/internal switch");
+    /* determine the expected index in table */
+    uint32_t expected_index = hash_get_index(&hash);
+    /* check if the expected index is set */
+    if (has_index(copy, expected_index)) {
+        /* if yes, get the compact index to address the array */
+        int pos = get_pos(expected_index, INDEX(copy));
+        /* index into the table and check what type of entry we're looking at */
+        HamtNode *next = &TABLE(copy)[pos];
+        if (is_value(VALUE(next))) {
+            if ((*cmp_eq)(key, KEY(next)) == 0) {
+                uint32_t n_rows = get_popcount(INDEX(copy));
+                void *value = VALUE(next);
+                /* We shrink tables while they have more than 2 rows and switch
+                 * to gathering the subtrie otherwise. The exception is when we
+                 * are at the root, where we must shrink the table to one or
+                 * zero.
+                 */
+                if (n_rows > 2 || (n_rows >= 1 && root == copy)) {
+                    copy =
+                        mem_shrink_table(copy, n_rows, expected_index, pos);
+                } else if (n_rows == 2) {
+                    /* if both rows are value rows, gather, dropping the current row */
+                    HamtNode* other = &TABLE(copy)[!pos];
+                    if (is_value(VALUE(other))) {
+                        copy = mem_gather_table(copy, !pos);
+                        return (RemoveResult){.status = REMOVE_GATHERED,
+                                              .value = value};
+                    } else {
+                        /* otherwise shrink the node to n_rows == 1 */
+                        copy =
+                            mem_shrink_table(copy, n_rows, expected_index, pos);
+                    }
+                }
+                return (RemoveResult){.status = REMOVE_SUCCESS, .value = value};
+            }
+            /* not found: same hash but different key */
+            return (RemoveResult){.status = REMOVE_NOTFOUND, .value = NULL};
+        } else {
+            /* For table entries, recurse to the next level */
+            assert(TABLE(next) != NULL &&
+                   "invariant: table ptrs must not be NULL");
+            RemoveResult result = path_copy_rem_recurse(root, next, hash_step(hash), cmp_eq, key, next);
+            if (next != TABLE(root) && result.status == REMOVE_GATHERED) {
+                /* remove dangling internal nodes: check if we need to
+                 * propagate the gathering of the key-value entry */
+                int n_rows = get_popcount(INDEX(copy));
+                if (n_rows == 1) {
+                    copy = mem_gather_table(copy, 0);
+                    return (RemoveResult){.status = REMOVE_GATHERED,
+                                          .value = result.value};
+                }
+            }
+            return (RemoveResult){.status = REMOVE_SUCCESS,
+                                  .value = result.value};
+        }
+    }
+    return (RemoveResult){.status = REMOVE_NOTFOUND, .value = NULL};
+}
+
+static PathResult path_copy_rem(HamtNode *root, HamtNode *anchor, Hash hash, HamtCmpFn cmp_eq,
+                            const void *key)
+{
+    PathResult pr;
+    pr.root = mem_alloc(sizeof(HamtNode));
+    pr.rr = path_copy_rem_recurse(pr.root, anchor, hash, cmp_eq, key, pr.root);
+    return pr;
+}
+
+HAMT hamt_premove(HAMT trie, void *key)
+{
+    Hash hash = {.key = key,
+                 .hash_fn = trie->key_hash,
+                 .hash = trie->key_hash(key, 0),
+                 .depth = 0,
+                 .shift = 0};
+    HAMT cp = hamt_dup(trie);
+    PathResult pr = path_copy_rem(trie->root, trie->root, hash, trie->key_cmp, key);
+    cp->root = pr.root;
+    if (pr.rr.status == REMOVE_SUCCESS || pr.rr.status == REMOVE_GATHERED) {
+        cp->size -= 1;
+    }
+    return cp;
+}
+

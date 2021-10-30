@@ -724,7 +724,7 @@ char *test_persistent_set()
 
 char *test_persistent_aspell_dict_en()
 {
-    printf(". testing large-scale set/insert w/ string keys (persistent)\n");
+    printf(". testing large-scale set/insert w/ structural sharing\n");
 
     enum { N = 235886 };
     char **words = NULL;
@@ -758,8 +758,46 @@ char *test_persistent_aspell_dict_en()
     mu_assert(sr.hash.depth == 7, "invalid depth");
 
     free_words(words, N);
-    /* There is no way to cleanly free the structurally shared 
+    /* There is no way to cleanly free the structurally shared
      * tries without garbage collection. Leak them. */
+    return 0;
+}
+
+char *test_persistent_remove_aspell_dict_en()
+{
+    printf(". testing large-scale remove w/ structural sharing\n");
+
+    enum { N = 235886 };
+    char **words = NULL;
+    HAMT t;
+
+    load_words(&words, N);
+    t = hamt_create(my_keyhash_string, my_keycmp_string);
+    for (size_t i = 0; i < N; i++) {
+        /* structural sharing */
+        t = hamt_pset(t, words[i], words[i]);
+    }
+
+    /*
+     * Delete all entries one by one. After each deletion, check that the
+     * deleted value is not present in the new trie and can still be accessed
+     * in the previous tree.
+     */
+    HAMT s;
+    for (size_t i = 0; i < N; i++) {
+        /* structural sharing */
+        s = hamt_premove(t, words[i]);
+        mu_assert(hamt_get(t, words[i]) != NULL, "key should not have been removed from original trie");
+        mu_assert(hamt_get(s, words[i]) == NULL, "key should have been removed from copy");
+        /* leak the previous version */
+        t = s;
+    }
+
+    free_words(words, N);
+    /*
+     * There is no way to cleanly free the structurally shared
+     * tries without garbage collection. Leak them.
+     */
     return 0;
 }
 
@@ -785,6 +823,7 @@ static char *test_suite()
     // persistent data structure tests
     mu_run_test(test_persistent_set);
     mu_run_test(test_persistent_aspell_dict_en);
+    mu_run_test(test_persistent_remove_aspell_dict_en);
     // add more tests here
     return 0;
 }
