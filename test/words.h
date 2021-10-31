@@ -1,5 +1,5 @@
-#ifndef __HAMT_TEST_WORDS_H__
-#define __HAMT_TEST_WORDS_H__
+#ifndef HAMT_TEST_WORDS_H
+#define HAMT_TEST_WORDS_H
 
 #include <stdlib.h>
 
