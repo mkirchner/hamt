@@ -15,7 +15,8 @@ TEST_SRCS := \
 	src/mem.c \
 	src/murmur3.c \
 	test/test_hamt.c \
-	test/utils.c
+	test/utils.c \
+	test/words.c
 
 TEST_OBJS := $(TEST_SRCS:%=$(BUILD_DIR)/%.o)
 TEST_DEPS := $(TEST_OBJS:.o=.d)
@@ -25,7 +26,8 @@ PERF_SRCS := \
 	src/mem.c \
 	src/murmur3.c \
 	test/perf.c \
-	test/utils.c
+	test/utils.c \
+	test/words.c
 
 PERF_OBJS := $(PERF_SRCS:%=$(BUILD_DIR)/%.o)
 PERF_DEPS := $(PERF_OBJS:.o=.d)
