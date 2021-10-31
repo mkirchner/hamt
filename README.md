@@ -1,5 +1,11 @@
 # hamt
-A hash array-mapped trie implementation in C. This is work in progress.
+A hash array-mapped trie implementation in C99. The implementation follows
+the Bagwell 2001 paper [[1](bagwell_01_ideal)]
+
+[bagwell_01_ideal]: https://lampwww.epfl.ch/papers/idealhashtrees.pdf
+
+
+
 
 ## Todo
 
