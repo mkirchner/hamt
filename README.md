@@ -47,19 +47,19 @@ simplicity.
 
 In order to get started, we need four pieces:
 
-1. The  `include/hamt.h` header file in which we define the public API.
+1. The  `include/hamt.h` header file in which we define the public interface.
    For now, we start with a very basic interface that we will re-visit
    [at a later point](#fixme).
-2. A dummy implementation of the API functions defined above so we can
+2. A dummy implementation of the functions defined in the interface so we can
    successfully compile the project. The implementation will reside in
    `src/hamt.c`.
 3. A simple test case, so we have something to run once the compilation
    is done.
 4. A `Makefile` that ties it all together.
 
-### Setup: the API
+### Setup: the `hamt.h` header file
 
-At the very least, the API needs to define a data structure (i.e. what will
+At the very least, the interface needs to define a data structure (i.e. what will
 eventually be our HAMT implementation) and a set of functions that operate on
 it:
 
@@ -76,13 +76,14 @@ HAMT hamt_create();
 void hamt_delete(HAMT);
 ```
 
-### Setup: the implementation
+### Setup: the `hamt.c` implementation file
 
-We also add a preliminary implementation:
+We also add a preliminary implementation so we can make sure the build system
+works:
 
 ```c
 struct HamtImpl {
-    int dummy;
+    void* dummy;
 };
 
 
@@ -99,9 +100,117 @@ void hamt_delete(HAMT h)
 
 ### Setup: the `minunit` framework and out first test
 
+`hamt` uses the `minunit` testing framework for unit testing. The
+implementation fits in a single header file, in our case: `minunit.h`:
+
+```c
+#ifndef MINUNIT_H
+#define MINUNIT_H
+
+/*
+ * Based on: http://www.jera.com/techinfo/jtns/jtn002.html
+ */
+
+#define mu_assert(test, message)                                               \
+    do {                                                                       \
+        if (!(test))                                                           \
+            return message;                                                    \
+    } while (0)
+#define mu_run_test(test)                                                      \
+    do {                                                                       \
+        char *message = test();                                                \
+        tests_run++;                                                           \
+        if (message)                                                           \
+            return message;                                                    \
+    } while (0)
+
+extern int tests_run;
+
+#endif /* !MINUNIT_H */
+```
+
+We also add an initial test to the unit test implementation in
+`test/test_hamt.c`:
+
+```c
+#include "minunit.h"
+#include "../src/hamt.c"
+
+int tests_run = 0;
+
+char* test_dummy()
+{
+    return 0;
+}
+
+static char *test_suite()
+{
+    mu_run_test(test_dummy);
+    return 0;
+}
+
+int main()
+{
+    printf("---=[ Hash array mapped trie tests\n");
+    char *result = test_suite();
+    if (result != 0) {
+        printf("%s\n", result);
+    } else {
+        printf("All tests passed.\n");
+    }
+    printf("Tests run: %d\n", tests_run);
+    return result != 0;
+}
+```
+
 ### Setup: Using `make` to build the project
 
+```make
+BUILD_DIR ?= ./build
+SRC_DIRS ?= ./src ./test ./include
+INC_DIRS := $(shell find $(SRC_DIRS) -type d)
+INC_FLAGS := $(addprefix -I,$(INC_DIRS))
 
+LIB_SRCS := \
+	src/hamt.c
+
+LIB_OBJS := $(LIB_SRCS:%=$(BUILD_DIR)/%.o)
+LIB_DEPS := $(LIB_OBJS:.o=.d)
+
+TEST_SRCS := \
+	test/test_hamt.c
+
+TEST_OBJS := $(TEST_SRCS:%=$(BUILD_DIR)/%.o)
+TEST_DEPS := $(TEST_OBJS:.o=.d)
+
+CPPFLAGS ?= $(INC_FLAGS) -MMD -MP -g -O0
+
+lib: $(BUILD_DIR)/src/libhamt.dylib
+
+$(BUILD_DIR)/src/libhamt.dylib: $(LIB_OBJS)
+	$(CC) $(LIB_OBJS) -dynamiclib -o $@
+
+test: $(BUILD_DIR)/test/test_hamt
+	$(BUILD_DIR)/test/test_hamt
+
+$(BUILD_DIR)/test/test_hamt: $(TEST_OBJS)
+	$(CC) $(TEST_OBJS) -o $@ $(LDFLAGS)
+
+# c source
+$(BUILD_DIR)/%.c.o: %.c
+	$(MKDIR_P) $(dir $@)
+	$(CC) $(CPPFLAGS) $(CFLAGS) -c $< -o $@
+
+.PHONY: clean
+
+clean:
+	$(RM) -r $(BUILD_DIR)
+
+-include $(LIB_DEPS)
+-include $(TEST_DEPS)
+
+MKDIR_P ?= mkdir -p
+```
 
 ## Design & foundational data structures
 
