@@ -105,6 +105,8 @@ void hamt_delete(HAMT h)
 
 ## Design & foundational data structures
 
+![](doc/img/hamt-overview.png)
+
 * The trie
 
 
