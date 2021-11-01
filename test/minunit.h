@@ -5,19 +5,22 @@
  * Based on: http://www.jera.com/techinfo/jtns/jtn002.html
  */
 
-#define mu_assert(test, message)                                               \
+#define MU_ASSERT(test, message)                                               \
     do {                                                                       \
         if (!(test))                                                           \
             return message;                                                    \
     } while (0)
-#define mu_run_test(test)                                                      \
+#define MU_RUN_TEST(test)                                                      \
     do {                                                                       \
         char *message = test();                                                \
-        tests_run++;                                                           \
+        mu_tests_run++;                                                        \
         if (message)                                                           \
             return message;                                                    \
     } while (0)
 
-extern int tests_run;
+#define MU_TEST_CASE(name) static char *name()
+#define MU_TEST_SUITE(name) static char *name()
+
+extern int mu_tests_run;
 
 #endif /* !MINUNIT_H */
