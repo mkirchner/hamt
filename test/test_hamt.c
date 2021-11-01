@@ -9,29 +9,13 @@
 
 #include "../src/hamt.c"
 
-static void debug_print(const HamtNode *node, size_t depth)
-{
-    /* print node*/
-    if (!is_value(node->as.kv.value)) {
-        printf("%*s%s", (int)depth * 2, "", "[ ");
-        for (size_t i = 0; i < 32; ++i) {
-            if (node->as.table.index & (1 << i)) {
-                printf("%2lu ", i);
-            }
-        }
-        printf("]\n");
-        /* print table */
-        int n = get_popcount(node->as.table.index);
-        for (int i = 0; i < n; ++i) {
-            debug_print(&node->as.table.ptr[i], depth + 1);
-        }
-    } else {
-        /* print value */
-        printf("%*s(%c, %d)\n", (int)depth * 2, "", *(char *)node->as.kv.key,
-               *(int *)untagged(node->as.kv.value));
-    }
-}
-
+/*
+ * Prints `node` and all its descendants in the HAMT.
+ *
+ * @param ix Index of `node` in its table (for illustratrion only)
+ * @param node Pointer to the anchor node
+ * @param depth Tree depth as a parameter
+ */
 static void debug_print_string(size_t ix, const HamtNode *node, size_t depth)
 {
     /* print node*/
@@ -55,7 +39,7 @@ static void debug_print_string(size_t ix, const HamtNode *node, size_t depth)
     }
 }
 
-static char *test_popcount()
+MU_TEST_CASE(test_popcount)
 {
     printf(". testing popcount\n");
     /* we're relying on a built-in, spot-check a few cases */
@@ -65,13 +49,13 @@ static char *test_popcount()
     } test_cases[4] = {{0, 0}, {42, 3}, {1337, 6}, {UINT32_MAX, 32}};
 
     for (size_t i = 0; i < 4; ++i) {
-        mu_assert(get_popcount(test_cases[i].number) == test_cases[i].nbits,
+        MU_ASSERT(get_popcount(test_cases[i].number) == test_cases[i].nbits,
                   "Unexpected number of set bits");
     }
     return 0;
 }
 
-static char *test_compact_index()
+MU_TEST_CASE(test_compact_index)
 {
     printf(". testing compact index calculation\n");
     /* 32 bits, set 7, 15, 19 */
@@ -84,28 +68,28 @@ static char *test_compact_index()
                        {14, 1}, {16, 2}, {18, 2}, {20, 3}};
 
     for (size_t i = 0; i < 8; ++i) {
-        mu_assert(get_pos(test_cases[i].sparse_index, bitmap) ==
+        MU_ASSERT(get_pos(test_cases[i].sparse_index, bitmap) ==
                       test_cases[i].expected_dense_index,
                   "Unexpected dense index");
     }
     return 0;
 }
 
-static char *test_tagging()
+MU_TEST_CASE(test_tagging)
 {
     printf(". testing pointer tagging\n");
     HamtNode n;
     HamtNode *p = &n;
-    mu_assert(!is_value(p), "Raw pointer must not be tagged");
+    MU_ASSERT(!is_value(p), "Raw pointer must not be tagged");
     p = tagged(p);
-    mu_assert(is_value(p),
+    MU_ASSERT(is_value(p),
               "Tagged pointer should be detected as tagged pointer");
     p = untagged(p);
-    mu_assert(!is_value(p), "Untagging must return a raw pointer");
+    MU_ASSERT(!is_value(p), "Untagging must return a raw pointer");
     return 0;
 }
 
-static char *test_murmur3_x86_32()
+MU_TEST_CASE(test_murmur3_x86_32)
 {
     printf(". testing Murmur3 (x86, 32bit)\n");
     /* test vectors from
@@ -128,7 +112,7 @@ static char *test_murmur3_x86_32()
     for (size_t i = 0; i < 7; ++i) {
         uint32_t hash = murmur3_32((uint8_t *)test_cases[i].key,
                                    test_cases[i].len, test_cases[i].seed);
-        mu_assert(hash == test_cases[i].expected, "Wrong hash");
+        MU_ASSERT(hash == test_cases[i].expected, "Wrong hash");
     }
     return 0;
 }
@@ -152,7 +136,7 @@ static void print_keys(int32_t hash)
     }
 }
 
-static char *test_search()
+MU_TEST_CASE(test_search)
 {
     printf(". testing search\n");
     /* Data
@@ -242,15 +226,15 @@ static char *test_search()
                      .depth = 0,
                      .shift = 0};
         SearchResult sr = search(t.root, hash, my_strncmp_1, test_cases[i].key);
-        mu_assert(sr.status == test_cases[i].expected_status,
+        MU_ASSERT(sr.status == test_cases[i].expected_status,
                   "Unexpected search result status");
         if (test_cases[i].expected_status == SEARCH_SUCCESS) {
             /* test key */
-            mu_assert(0 == my_strncmp_1(test_cases[i].key,
+            MU_ASSERT(0 == my_strncmp_1(test_cases[i].key,
                                         (char *)sr.value->as.kv.key),
                       "Successful search returns non-matching key");
             /* test value */
-            mu_assert(test_cases[i].expected_value ==
+            MU_ASSERT(test_cases[i].expected_value ==
                           *(int *)untagged(sr.value->as.kv.value),
                       "Successful search returns wrong value");
         }
@@ -263,7 +247,7 @@ static char *test_search()
     return 0;
 }
 
-char *test_set_with_collisions()
+MU_TEST_CASE(test_set_with_collisions)
 {
     printf(". testing set/insert w/ forced key collision\n");
     struct HamtImpl *t = hamt_create(my_hash_1, my_strncmp_1);
@@ -290,13 +274,13 @@ char *test_set_with_collisions()
                  .depth = 0,
                  .shift = 0};
     SearchResult sr = search(t->root, hash, t->key_cmp, &keys[2]);
-    mu_assert(sr.status == SEARCH_SUCCESS, "failed to find inserted value");
-    mu_assert(new_node == sr.value, "Query result points to the wrong node");
+    MU_ASSERT(sr.status == SEARCH_SUCCESS, "failed to find inserted value");
+    MU_ASSERT(new_node == sr.value, "Query result points to the wrong node");
     hamt_delete(t);
     return 0;
 }
 
-char *test_set_whole_enchilada_00()
+MU_TEST_CASE(test_set_whole_enchilada_00)
 {
     printf(". testing set/insert w/ key collision\n");
 
@@ -308,24 +292,21 @@ char *test_set_whole_enchilada_00()
 
     struct HamtImpl *t = hamt_create(my_hash_1, my_strncmp_1);
     for (size_t i = 0; i < 5; ++i) {
-        // printf("setting (%c, %d)\n", data[i].key, data[i].value);
         set(t, t->root, t->key_hash, t->key_cmp, &data[i].key, &data[i].value);
-        // debug_print(t->root, 4);
     }
 
     for (size_t i = 0; i < 5; ++i) {
-        // printf("querying (%c, %d)\n", data[i].key, data[i].value);
         Hash hash = {.key = &data[i].key,
                      .hash_fn = t->key_hash,
                      .hash = t->key_hash(&data[i].key, 0),
                      .depth = 0,
                      .shift = 0};
         SearchResult sr = search(t->root, hash, t->key_cmp, &data[i].key);
-        mu_assert(sr.status == SEARCH_SUCCESS, "failed to find inserted value");
+        MU_ASSERT(sr.status == SEARCH_SUCCESS, "failed to find inserted value");
         int *value = (int *)untagged(sr.value->as.kv.value);
-        mu_assert(value, "found value is NULL");
-        mu_assert(*value == data[i].value, "value mismatch");
-        mu_assert(value == &data[i].value, "value pointer mismatch");
+        MU_ASSERT(value, "found value is NULL");
+        MU_ASSERT(*value == data[i].value, "value mismatch");
+        MU_ASSERT(value == &data[i].value, "value pointer mismatch");
     }
     hamt_delete(t);
     return 0;
@@ -355,7 +336,7 @@ static uint32_t my_keyhash_string(const void *key, const size_t gen)
     return hash;
 }
 
-char *test_set_stringkeys()
+MU_TEST_CASE(test_set_stringkeys)
 {
     printf(". testing set/insert w/ string keys\n");
 
@@ -381,19 +362,19 @@ char *test_set_stringkeys()
                      .depth = 0,
                      .shift = 0};
         SearchResult sr = search(t->root, hash, t->key_cmp, data[i].key);
-        mu_assert(sr.status == SEARCH_SUCCESS, "failed to find inserted value");
+        MU_ASSERT(sr.status == SEARCH_SUCCESS, "failed to find inserted value");
         int *value = (int *)untagged(sr.value->as.kv.value);
-        mu_assert(value, "found value is NULL");
+        MU_ASSERT(value, "found value is NULL");
         // printf("    %s: %d == %d\n", sr.value->as.kv.key, *value,
         // data[i].value);
-        mu_assert(*value == data[i].value, "value mismatch");
-        mu_assert(value == &data[i].value, "value pointer mismatch");
+        MU_ASSERT(*value == data[i].value, "value mismatch");
+        MU_ASSERT(value == &data[i].value, "value pointer mismatch");
     }
     hamt_delete(t);
     return 0;
 }
 
-char *test_aspell_dict_en()
+MU_TEST_CASE(test_aspell_dict_en)
 {
     printf(". testing large-scale set/insert w/ string keys\n");
 
@@ -409,7 +390,7 @@ char *test_aspell_dict_en()
 
     /* Check if we can retrieve the entire dictionary */
     for (size_t i = 0; i < WORDS_MAX; i++) {
-        mu_assert(hamt_get(t, words[i]) != NULL, "could not find expected key");
+        MU_ASSERT(hamt_get(t, words[i]) != NULL, "could not find expected key");
     }
 
     /* Check if "bluism" has search depth 7 */
@@ -420,19 +401,19 @@ char *test_aspell_dict_en()
                  .depth = 0,
                  .shift = 0};
     SearchResult sr = search(t->root, hash, t->key_cmp, target);
-    mu_assert(sr.status == SEARCH_SUCCESS, "fail");
+    MU_ASSERT(sr.status == SEARCH_SUCCESS, "fail");
     char *value = (char *)untagged(sr.value->as.kv.value);
 
-    mu_assert(value, "failed to retrieve existing value");
-    mu_assert(strcmp(value, target) == 0, "invalid value");
-    mu_assert(sr.hash.depth == 7, "invalid depth");
+    MU_ASSERT(value, "failed to retrieve existing value");
+    MU_ASSERT(strcmp(value, target) == 0, "invalid value");
+    MU_ASSERT(sr.hash.depth == 7, "invalid depth");
 
     hamt_delete(t);
     words_free(words, WORDS_MAX);
     return 0;
 }
 
-static char *test_shrink_table()
+MU_TEST_CASE(test_shrink_table)
 {
     printf(". testing table operations: shrink\n");
     enum { N = 5 };
@@ -455,7 +436,7 @@ static char *test_shrink_table()
         }
         uint32_t delete_index = data[delete_pos].index;
         HamtNode *a1 = mem_shrink_table(a0, N, delete_index, delete_pos);
-        mu_assert(get_popcount(a1->as.table.index) == N - 1,
+        MU_ASSERT(get_popcount(a1->as.table.index) == N - 1,
                   "wrong number of rows");
         size_t diff = 0;
         for (size_t i = 0; i < N; ++i) {
@@ -463,9 +444,9 @@ static char *test_shrink_table()
                 diff = 1;
                 continue;
             }
-            mu_assert(data[i].key == a1->as.table.ptr[i - diff].as.kv.key,
+            MU_ASSERT(data[i].key == a1->as.table.ptr[i - diff].as.kv.key,
                       "unexpected key in shrunk table");
-            mu_assert((void *)&data[i].value ==
+            MU_ASSERT((void *)&data[i].value ==
                           untagged(a1->as.table.ptr[i - diff].as.kv.value),
                       "unexpected value in shrunk table");
         }
@@ -475,7 +456,7 @@ static char *test_shrink_table()
     return 0;
 }
 
-static char *test_gather_table()
+MU_TEST_CASE(test_gather_table)
 {
 
     printf(". testing table operations: gather\n");
@@ -497,13 +478,13 @@ static char *test_gather_table()
 
     HamtNode *a1 = mem_gather_table(a0, 0);
 
-    mu_assert(a1->as.kv.key == data[0].key, "wrong key in gather");
-    mu_assert(untagged(a1->as.kv.value) == (void *)&data[0].value,
+    MU_ASSERT(a1->as.kv.key == data[0].key, "wrong key in gather");
+    MU_ASSERT(untagged(a1->as.kv.value) == (void *)&data[0].value,
               "wrong value in gather");
     return 0;
 }
 
-char *test_remove()
+MU_TEST_CASE(test_remove)
 {
     printf(". testing remove w/ string keys\n");
 
@@ -529,10 +510,10 @@ char *test_remove()
                          .shift = 0};
             RemoveResult rr =
                 rem(t->root, t->root, hash, t->key_cmp, data[i].key);
-            mu_assert(rr.status == REMOVE_SUCCESS ||
+            MU_ASSERT(rr.status == REMOVE_SUCCESS ||
                           rr.status == REMOVE_GATHERED,
                       "failed to find inserted value");
-            mu_assert(*(int *)untagged(rr.value) == data[i].value,
+            MU_ASSERT(*(int *)untagged(rr.value) == data[i].value,
                       "wrong value in remove");
         }
     }
@@ -540,7 +521,7 @@ char *test_remove()
     return 0;
 }
 
-static char *test_create_delete()
+MU_TEST_CASE(test_create_delete)
 {
     printf(". testing create/delete cycle\n");
     struct HamtImpl *t;
@@ -560,7 +541,7 @@ static char *test_create_delete()
     return 0;
 }
 
-static char *test_size()
+MU_TEST_CASE(test_size)
 {
     printf(". testing tree size tracking\n");
     struct HamtImpl *t;
@@ -573,17 +554,17 @@ static char *test_size()
                  {"on", 4},     {"the", 5},    {"wall", 6}};
     for (size_t i = 0; i < N; ++i) {
         hamt_set(t, data[i].key, &data[i].value);
-        mu_assert(hamt_size(t) == (i + 1), "Wrong tree size during set");
+        MU_ASSERT(hamt_size(t) == (i + 1), "Wrong tree size during set");
     }
     for (size_t i = 0; i < N; ++i) {
         hamt_remove(t, data[i].key);
-        mu_assert(hamt_size(t) == (N - 1 - i), "Wrong tree size during remove");
+        MU_ASSERT(hamt_size(t) == (N - 1 - i), "Wrong tree size during remove");
     }
     hamt_delete(t);
     return 0;
 }
 
-static char *test_iterators()
+MU_TEST_CASE(test_iterators)
 {
     printf(". testing iterators\n");
     struct HamtImpl *t;
@@ -606,7 +587,7 @@ static char *test_iterators()
 
     HamtIterator it = hamt_it_create(t);
     hamt_it_next(it);
-    mu_assert(it->cur == NULL, "iteration fail for empty trie");
+    MU_ASSERT(it->cur == NULL, "iteration fail for empty trie");
     hamt_it_delete(it);
 
     for (size_t i = 0; i < 6; ++i) {
@@ -615,21 +596,21 @@ static char *test_iterators()
     it = hamt_it_create(t);
     size_t count = 0;
     while (hamt_it_valid(it)) {
-        mu_assert(strcmp((char *)hamt_it_get_key(it), expected[count].key) == 0,
+        MU_ASSERT(strcmp((char *)hamt_it_get_key(it), expected[count].key) == 0,
                   "Unexpected key in iteration");
-        mu_assert(*(int *)hamt_it_get_value(it) == expected[count].value,
+        MU_ASSERT(*(int *)hamt_it_get_value(it) == expected[count].value,
                   "Unexpected value in iteration");
         count += 1;
         hamt_it_next(it);
     }
-    mu_assert(count == 6, "Wrong number of items in iteration");
+    MU_ASSERT(count == 6, "Wrong number of items in iteration");
     hamt_it_delete(it);
 
     hamt_delete(t);
     return 0;
 }
 
-char *test_persistent_set()
+MU_TEST_CASE(test_persistent_set)
 {
     printf(". testing set/insert w/ structural sharing\n");
 
@@ -644,22 +625,22 @@ char *test_persistent_set()
     struct HamtImpl *tmp = t;
     for (size_t i = 0; i < 6; ++i) {
         tmp = hamt_pset(t, data[i].key, &data[i].value);
-        mu_assert(hamt_size(tmp) == hamt_size(t) + 1, "wrong trie size");
+        MU_ASSERT(hamt_size(tmp) == hamt_size(t) + 1, "wrong trie size");
         for (size_t k = 0; k <= i; k++) {
             if (k < i) {
                 /* test if pre-insert keys are still accessible
                  * in the original trie */
-                mu_assert(hamt_get(t, data[k].key) == &data[k].value,
+                MU_ASSERT(hamt_get(t, data[k].key) == &data[k].value,
                           "failed to find all expected values in existing");
             }
             /* test is pre-insert keys and the new key are accessible
              * in the new trie */
-            mu_assert(hamt_get(tmp, data[k].key) == &data[k].value,
+            MU_ASSERT(hamt_get(tmp, data[k].key) == &data[k].value,
                       "failed to find all expected values in copy");
         }
         /* make sure that the new key is not accessible in the
          * existing trie */
-        mu_assert(hamt_get(t, data[i].key) == NULL, "unexpected side effect");
+        MU_ASSERT(hamt_get(t, data[i].key) == NULL, "unexpected side effect");
         t = tmp;
     }
     /* There is no way to cleanly free the structurally shared
@@ -667,7 +648,7 @@ char *test_persistent_set()
     return 0;
 }
 
-char *test_persistent_aspell_dict_en()
+MU_TEST_CASE(test_persistent_aspell_dict_en)
 {
     printf(". testing large-scale set/insert w/ structural sharing\n");
 
@@ -683,7 +664,7 @@ char *test_persistent_aspell_dict_en()
 
     /* Check if we can retrieve the entire dictionary */
     for (size_t i = 0; i < WORDS_MAX; i++) {
-        mu_assert(hamt_get(t, words[i]) != NULL, "could not find expected key");
+        MU_ASSERT(hamt_get(t, words[i]) != NULL, "could not find expected key");
     }
 
     /* Check if "bluism" has search depth 7 */
@@ -694,12 +675,12 @@ char *test_persistent_aspell_dict_en()
                  .depth = 0,
                  .shift = 0};
     SearchResult sr = search(t->root, hash, t->key_cmp, target);
-    mu_assert(sr.status == SEARCH_SUCCESS, "fail");
+    MU_ASSERT(sr.status == SEARCH_SUCCESS, "fail");
     char *value = (char *)untagged(sr.value->as.kv.value);
 
-    mu_assert(value, "failed to retrieve existing value");
-    mu_assert(strcmp(value, target) == 0, "invalid value");
-    mu_assert(sr.hash.depth == 7, "invalid depth");
+    MU_ASSERT(value, "failed to retrieve existing value");
+    MU_ASSERT(strcmp(value, target) == 0, "invalid value");
+    MU_ASSERT(sr.hash.depth == 7, "invalid depth");
 
     words_free(words, WORDS_MAX);
     /* There is no way to cleanly free the structurally shared
@@ -707,7 +688,7 @@ char *test_persistent_aspell_dict_en()
     return 0;
 }
 
-char *test_persistent_remove_aspell_dict_en()
+MU_TEST_CASE(test_persistent_remove_aspell_dict_en)
 {
     printf(". testing large-scale remove w/ structural sharing\n");
 
@@ -731,9 +712,9 @@ char *test_persistent_remove_aspell_dict_en()
     for (size_t i = 0; i < WORDS_MAX; i++) {
         /* structural sharing */
         s = hamt_premove(t, words[i]);
-        mu_assert(hamt_get(t, words[i]) != NULL,
+        MU_ASSERT(hamt_get(t, words[i]) != NULL,
                   "key should not have been removed from original trie");
-        mu_assert(hamt_get(s, words[i]) == NULL,
+        MU_ASSERT(hamt_get(s, words[i]) == NULL,
                   "key should have been removed from copy");
         /* leak the previous version */
         t = s;
@@ -747,29 +728,29 @@ char *test_persistent_remove_aspell_dict_en()
     return 0;
 }
 
-int tests_run = 0;
+int mu_tests_run = 0;
 
-static char *test_suite()
+MU_TEST_SUITE(test_suite)
 {
-    mu_run_test(test_popcount);
-    mu_run_test(test_compact_index);
-    mu_run_test(test_tagging);
-    mu_run_test(test_murmur3_x86_32);
-    mu_run_test(test_search);
-    mu_run_test(test_set_with_collisions);
-    mu_run_test(test_set_whole_enchilada_00);
-    mu_run_test(test_set_stringkeys);
-    mu_run_test(test_aspell_dict_en);
-    mu_run_test(test_shrink_table);
-    mu_run_test(test_gather_table);
-    mu_run_test(test_remove);
-    mu_run_test(test_create_delete);
-    mu_run_test(test_size);
-    mu_run_test(test_iterators);
+    MU_RUN_TEST(test_popcount);
+    MU_RUN_TEST(test_compact_index);
+    MU_RUN_TEST(test_tagging);
+    MU_RUN_TEST(test_murmur3_x86_32);
+    MU_RUN_TEST(test_search);
+    MU_RUN_TEST(test_set_with_collisions);
+    MU_RUN_TEST(test_set_whole_enchilada_00);
+    MU_RUN_TEST(test_set_stringkeys);
+    MU_RUN_TEST(test_aspell_dict_en);
+    MU_RUN_TEST(test_shrink_table);
+    MU_RUN_TEST(test_gather_table);
+    MU_RUN_TEST(test_remove);
+    MU_RUN_TEST(test_create_delete);
+    MU_RUN_TEST(test_size);
+    MU_RUN_TEST(test_iterators);
     // persistent data structure tests
-    mu_run_test(test_persistent_set);
-    mu_run_test(test_persistent_aspell_dict_en);
-    mu_run_test(test_persistent_remove_aspell_dict_en);
+    MU_RUN_TEST(test_persistent_set);
+    MU_RUN_TEST(test_persistent_aspell_dict_en);
+    MU_RUN_TEST(test_persistent_remove_aspell_dict_en);
     // add more tests here
     return 0;
 }
@@ -783,6 +764,6 @@ int main()
     } else {
         printf("All tests passed.\n");
     }
-    printf("Tests run: %d\n", tests_run);
+    printf("Tests run: %d\n", mu_tests_run);
     return result != 0;
 }
