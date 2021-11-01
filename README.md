@@ -100,8 +100,9 @@ void hamt_delete(HAMT h)
 
 ### Setup: the `minunit` framework and out first test
 
-`hamt` uses the `minunit` testing framework for unit testing. The
-implementation fits in a single header file, in our case: `minunit.h`:
+`hamt` uses the `minunit` testing framework for unit testing. Minunit is a very
+minimalistic framework and its implementation fits on a single page of a single
+header file (in our case: `minunit.h`):
 
 ```c
 #ifndef MINUNIT_H
@@ -111,41 +112,55 @@ implementation fits in a single header file, in our case: `minunit.h`:
  * Based on: http://www.jera.com/techinfo/jtns/jtn002.html
  */
 
-#define mu_assert(test, message)                                               \
+#define MU_ASSERT(test, message)                                               \
     do {                                                                       \
         if (!(test))                                                           \
             return message;                                                    \
     } while (0)
-#define mu_run_test(test)                                                      \
+#define MU_RUN_TEST(test)                                                      \
     do {                                                                       \
         char *message = test();                                                \
-        tests_run++;                                                           \
+        mu_tests_run++;                                                        \
         if (message)                                                           \
             return message;                                                    \
     } while (0)
 
-extern int tests_run;
+#define MU_TEST_CASE(name) static char *name()
+#define MU_TEST_SUITE(name) static char *name()
+
+extern int mu_tests_run;
 
 #endif /* !MINUNIT_H */
 ```
 
-We also add an initial test to the unit test implementation in
-`test/test_hamt.c`:
+With `minunit`, every unit test is a `MU_TEST_CASE` which are grouped into
+`MU_TEST_SUITE`s. The folliwing listing shows the basic structure of unit test
+implementations with `minunit`, check the [actual tests]() for a full listing.
+Also note that the unit tests include the `hamt.c` implementation file (as
+opposed to just the header). This is a common pattern to enable testing access
+to functions that would otherwise be local to the compilation unit (i.e.
+functions declared as  `static`).
 
 ```c
 #include "minunit.h"
 #include "../src/hamt.c"
 
-int tests_run = 0;
+int mu_tests_run = 0;
 
-char* test_dummy()
+MU_TEST_CASE(dummy)
 {
+    /* do something here */
+    MU_ASSERT(0 == 0, "Zero is nonzero, that's bad");
     return 0;
 }
 
-static char *test_suite()
+MU_TEST_SUITE(test_suite)
 {
-    mu_run_test(test_dummy);
+    /* Add tests here */
+    MU_RUN_TEST(test_dummy);
+    /*
+     * ... many more ...
+     */
     return 0;
 }
 
@@ -163,54 +178,14 @@ int main()
 }
 ```
 
+Including the `hamt.c` implementation file requires a bit of care in
+the Makefile setup in order to avoid symbol duplication.
+
 ### Setup: Using `make` to build the project
 
-```make
-BUILD_DIR ?= ./build
-SRC_DIRS ?= ./src ./test ./include
-INC_DIRS := $(shell find $(SRC_DIRS) -type d)
-INC_FLAGS := $(addprefix -I,$(INC_DIRS))
+`hamt` uses `make` as a build system for its simplicity in small projects and
+its portability. The Makefile is straightforward, albeit slightly verbatim.
 
-LIB_SRCS := \
-	src/hamt.c
-
-LIB_OBJS := $(LIB_SRCS:%=$(BUILD_DIR)/%.o)
-LIB_DEPS := $(LIB_OBJS:.o=.d)
-
-TEST_SRCS := \
-	test/test_hamt.c
-
-TEST_OBJS := $(TEST_SRCS:%=$(BUILD_DIR)/%.o)
-TEST_DEPS := $(TEST_OBJS:.o=.d)
-
-CPPFLAGS ?= $(INC_FLAGS) -MMD -MP -g -O0
-
-lib: $(BUILD_DIR)/src/libhamt.dylib
-
-$(BUILD_DIR)/src/libhamt.dylib: $(LIB_OBJS)
-	$(CC) $(LIB_OBJS) -dynamiclib -o $@
-
-test: $(BUILD_DIR)/test/test_hamt
-	$(BUILD_DIR)/test/test_hamt
-
-$(BUILD_DIR)/test/test_hamt: $(TEST_OBJS)
-	$(CC) $(TEST_OBJS) -o $@ $(LDFLAGS)
-
-# c source
-$(BUILD_DIR)/%.c.o: %.c
-	$(MKDIR_P) $(dir $@)
-	$(CC) $(CPPFLAGS) $(CFLAGS) -c $< -o $@
-
-.PHONY: clean
-
-clean:
-	$(RM) -r $(BUILD_DIR)
-
--include $(LIB_DEPS)
--include $(TEST_DEPS)
-
-MKDIR_P ?= mkdir -p
-```
 
 ## Design & foundational data structures
 
