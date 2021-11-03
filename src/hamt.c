@@ -577,7 +577,7 @@ const void *hamt_it_get_value(HamtIterator it)
 /*
  * ============    persistent data strcuture code    ===========
  */
-HAMT hamt_dup(HAMT h)
+HAMT hamt_dup(const HAMT h)
 {
     struct HamtImpl *trie = mem_alloc(sizeof(struct HamtImpl));
     trie->root = mem_alloc(sizeof(HamtNode));
@@ -657,7 +657,7 @@ static PathResult path_copy_search(HamtNode *anchor, Hash *hash,
     return pr;
 }
 
-static const HAMT pset(HAMT h, HamtNode *anchor, HamtKeyHashFn hash_fn,
+static const HAMT pset(const HAMT h, HamtNode *anchor, HamtKeyHashFn hash_fn,
                        HamtCmpFn cmp_fn, void *key, void *value)
 {
     Hash *hash = &(Hash){.key = key,
@@ -686,7 +686,7 @@ static const HAMT pset(HAMT h, HamtNode *anchor, HamtKeyHashFn hash_fn,
     return cp;
 }
 
-const HAMT hamt_pset(HAMT trie, void *key, void *value)
+const HAMT hamt_pset(const HAMT trie, void *key, void *value)
 {
     return pset(trie, trie->root, trie->key_hash, trie->key_cmp, key, value);
 }
@@ -770,7 +770,7 @@ static PathResult path_copy_rem(HamtNode *root, HamtNode *anchor, Hash *hash,
     return pr;
 }
 
-HAMT hamt_premove(HAMT trie, void *key)
+const HAMT hamt_premove(const HAMT trie, void *key)
 {
     Hash *hash = &(Hash){.key = key,
                          .hash_fn = trie->key_hash,
