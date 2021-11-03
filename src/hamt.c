@@ -67,7 +67,7 @@ typedef struct SearchResult {
     SearchStatus status;
     HamtNode *anchor;
     HamtNode *value;
-    Hash hash;
+    Hash *hash;
 } SearchResult;
 
 /* Removal results */
@@ -86,18 +86,15 @@ typedef struct PathResult {
     HamtNode *root;
 } PathResult;
 
-static inline Hash hash_step(const Hash h)
+static inline Hash *hash_next(Hash *h)
 {
-    Hash hash = {.key = h.key,
-                 .hash_fn = h.hash_fn,
-                 .hash = h.hash,
-                 .depth = h.depth + 1,
-                 .shift = h.shift + 5};
-    if (hash.shift > 30) {
-        hash.hash = hash.hash_fn(hash.key, hash.depth / 5);
-        hash.shift = 0;
+    h->depth += 1;
+    h->shift += 5;
+    if (h->shift > 30) {
+        h->hash = h->hash_fn(h->key, h->depth / 5);
+        h->shift = 0;
     }
-    return hash;
+    return h;
 }
 
 static inline uint32_t hash_get_index(const Hash *h)
@@ -130,13 +127,13 @@ HAMT hamt_create(HamtKeyHashFn key_hash, HamtCmpFn key_cmp)
     return trie;
 }
 
-static SearchResult search(HamtNode *anchor, Hash hash, HamtCmpFn cmp_eq,
+static SearchResult search(HamtNode *anchor, Hash *hash, HamtCmpFn cmp_eq,
                            const void *key)
 {
     assert(!is_value(VALUE(anchor)) &&
            "Invariant: search requires an internal node");
     /* determine the expected index in table */
-    uint32_t expected_index = hash_get_index(&hash);
+    uint32_t expected_index = hash_get_index(hash);
     /* check if the expected index is set */
     if (has_index(anchor, expected_index)) {
         /* if yes, get the compact index to address the array */
@@ -162,7 +159,7 @@ static SearchResult search(HamtNode *anchor, Hash hash, HamtCmpFn cmp_eq,
             /* For table entries, recurse to the next level */
             assert(TABLE(next) != NULL &&
                    "invariant: table ptrs must not be NULL");
-            return search(next, hash_step(hash), cmp_eq, key);
+            return search(next, hash_next(hash), cmp_eq, key);
         }
     }
     /* expected index is not set, terminate search */
@@ -245,11 +242,11 @@ HamtNode *mem_gather_table(HamtNode *anchor, uint32_t pos)
     return anchor;
 }
 
-static const HamtNode *insert_kv(HamtNode *anchor, Hash hash, void *key,
+static const HamtNode *insert_kv(HamtNode *anchor, Hash *hash, void *key,
                                  void *value)
 {
     /* calculate position in new table */
-    uint32_t ix = hash_get_index(&hash);
+    uint32_t ix = hash_get_index(hash);
     uint32_t new_index = INDEX(anchor) | (1 << ix);
     int pos = get_pos(ix, new_index);
     /* extend table */
@@ -265,32 +262,32 @@ static const HamtNode *insert_kv(HamtNode *anchor, Hash hash, void *key,
     return &new_table[pos];
 }
 
-static const HamtNode *insert_table(HamtNode *anchor, Hash hash, void *key,
+static const HamtNode *insert_table(HamtNode *anchor, Hash *hash, void *key,
                                     void *value)
 {
     /* FIXME: check for alloc failure and bail out correctly (deleting the
      *        incomplete subtree */
 
     /* Collect everything we know about the existing value */
-    Hash x_hash = {.key = KEY(anchor),
-                   .hash_fn = hash.hash_fn,
-                   .hash = hash.hash_fn(KEY(anchor), hash.depth / 5),
-                   .depth = hash.depth,
-                   .shift = hash.shift};
+    Hash *x_hash = &(Hash){.key = KEY(anchor),
+                           .hash_fn = hash->hash_fn,
+                           .hash = hash->hash_fn(KEY(anchor), hash->depth / 5),
+                           .depth = hash->depth,
+                           .shift = hash->shift};
     void *x_value = VALUE(anchor); /* tagged (!) value ptr */
     /* increase depth until the hashes diverge, building a list
      * of tables along the way */
-    Hash next_hash = hash_step(hash);
-    Hash x_next_hash = hash_step(x_hash);
-    uint32_t next_index = hash_get_index(&next_hash);
-    uint32_t x_next_index = hash_get_index(&x_next_hash);
+    Hash *next_hash = hash_next(hash);
+    Hash *x_next_hash = hash_next(x_hash);
+    uint32_t next_index = hash_get_index(next_hash);
+    uint32_t x_next_index = hash_get_index(x_next_hash);
     while (x_next_index == next_index) {
         TABLE(anchor) = mem_allocate_table(1);
         INDEX(anchor) = (1 << next_index);
-        next_hash = hash_step(next_hash);
-        x_next_hash = hash_step(x_next_hash);
-        next_index = hash_get_index(&next_hash);
-        x_next_index = hash_get_index(&x_next_hash);
+        next_hash = hash_next(next_hash);
+        x_next_hash = hash_next(x_next_hash);
+        next_index = hash_get_index(next_hash);
+        x_next_index = hash_get_index(x_next_hash);
         anchor = TABLE(anchor);
     }
     /* the hashes are different, let's allocate a table with two
@@ -302,7 +299,7 @@ static const HamtNode *insert_table(HamtNode *anchor, Hash hash, void *key,
     int pos = get_pos(next_index, INDEX(anchor));
     /* fill in the existing value; no need to tag the value pointer
      * since it is already tagged. */
-    TABLE(anchor)[x_pos].as.kv.key = (void *)x_hash.key;
+    TABLE(anchor)[x_pos].as.kv.key = (void *)x_hash->key;
     TABLE(anchor)[x_pos].as.kv.value = x_value;
     /* fill in the new key/value pair, tagging the pointer to the
      * new value to mark it as a value ptr */
@@ -315,11 +312,11 @@ static const HamtNode *insert_table(HamtNode *anchor, Hash hash, void *key,
 static const HamtNode *set(HAMT h, HamtNode *anchor, HamtKeyHashFn hash_fn,
                            HamtCmpFn cmp_fn, void *key, void *value)
 {
-    Hash hash = {.key = key,
-                 .hash_fn = hash_fn,
-                 .hash = hash_fn(key, 0),
-                 .depth = 0,
-                 .shift = 0};
+    Hash *hash = &(Hash){.key = key,
+                         .hash_fn = hash_fn,
+                         .hash = hash_fn(key, 0),
+                         .depth = 0,
+                         .shift = 0};
     SearchResult sr = search(anchor, hash, cmp_fn, key);
     const HamtNode *inserted;
     switch (sr.status) {
@@ -343,11 +340,11 @@ static const HamtNode *set(HAMT h, HamtNode *anchor, HamtKeyHashFn hash_fn,
 
 const void *hamt_get(const HAMT trie, void *key)
 {
-    Hash hash = {.key = key,
-                 .hash_fn = trie->key_hash,
-                 .hash = trie->key_hash(key, 0),
-                 .depth = 0,
-                 .shift = 0};
+    Hash *hash = &(Hash){.key = key,
+                         .hash_fn = trie->key_hash,
+                         .hash = trie->key_hash(key, 0),
+                         .depth = 0,
+                         .shift = 0};
     SearchResult sr = search(trie->root, hash, trie->key_cmp, key);
     if (sr.status == SEARCH_SUCCESS) {
         return untagged(sr.VALUE(value));
@@ -362,13 +359,13 @@ const void *hamt_set(HAMT trie, void *key, void *value)
     return VALUE(n);
 }
 
-static RemoveResult rem(HamtNode *root, HamtNode *anchor, Hash hash,
+static RemoveResult rem(HamtNode *root, HamtNode *anchor, Hash *hash,
                         HamtCmpFn cmp_eq, const void *key)
 {
     assert(!is_value(VALUE(anchor)) &&
            "Invariant: removal requires an internal node");
     /* determine the expected index in table */
-    uint32_t expected_index = hash_get_index(&hash);
+    uint32_t expected_index = hash_get_index(hash);
     /* check if the expected index is set */
     if (has_index(anchor, expected_index)) {
         /* if yes, get the compact index to address the array */
@@ -409,7 +406,7 @@ static RemoveResult rem(HamtNode *root, HamtNode *anchor, Hash hash,
             /* For table entries, recurse to the next level */
             assert(TABLE(next) != NULL &&
                    "invariant: table ptrs must not be NULL");
-            RemoveResult result = rem(root, next, hash_step(hash), cmp_eq, key);
+            RemoveResult result = rem(root, next, hash_next(hash), cmp_eq, key);
             if (next != TABLE(root) && result.status == REMOVE_GATHERED) {
                 /* remove dangling internal nodes: check if we need to
                  * propagate the gathering of the key-value entry */
@@ -429,11 +426,11 @@ static RemoveResult rem(HamtNode *root, HamtNode *anchor, Hash hash,
 
 void *hamt_remove(HAMT trie, void *key)
 {
-    Hash hash = {.key = key,
-                 .hash_fn = trie->key_hash,
-                 .hash = trie->key_hash(key, 0),
-                 .depth = 0,
-                 .shift = 0};
+    Hash *hash = &(Hash){.key = key,
+                         .hash_fn = trie->key_hash,
+                         .hash = trie->key_hash(key, 0),
+                         .depth = 0,
+                         .shift = 0};
     RemoveResult rr = rem(trie->root, trie->root, hash, trie->key_cmp, key);
     if (rr.status == REMOVE_SUCCESS || rr.status == REMOVE_GATHERED) {
         trie->size -= 1;
@@ -601,7 +598,7 @@ HamtNode *mem_dup_table(HamtNode *anchor)
     return new_table;
 }
 
-static SearchResult path_copy_search_recurse(HamtNode *anchor, Hash hash,
+static SearchResult path_copy_search_recurse(HamtNode *anchor, Hash *hash,
                                              HamtCmpFn cmp_eq, const void *key,
                                              HamtNode *copy)
 {
@@ -613,7 +610,7 @@ static SearchResult path_copy_search_recurse(HamtNode *anchor, Hash hash,
     assert(!is_value(VALUE(copy)) && "Copy caused a leaf/internal switch");
 
     /* determine the expected index in table */
-    uint32_t expected_index = hash_get_index(&hash);
+    uint32_t expected_index = hash_get_index(hash);
     /* check if the expected index is set */
     if (has_index(copy, expected_index)) {
         /* if yes, get the compact index to address the array */
@@ -639,7 +636,7 @@ static SearchResult path_copy_search_recurse(HamtNode *anchor, Hash hash,
             /* For table entries, recurse to the next level */
             assert(TABLE(next) != NULL &&
                    "invariant: table ptrs must not be NULL");
-            return path_copy_search_recurse(next, hash_step(hash), cmp_eq, key,
+            return path_copy_search_recurse(next, hash_next(hash), cmp_eq, key,
                                             next);
         }
     }
@@ -651,7 +648,7 @@ static SearchResult path_copy_search_recurse(HamtNode *anchor, Hash hash,
     return result;
 }
 
-static PathResult path_copy_search(HamtNode *anchor, Hash hash,
+static PathResult path_copy_search(HamtNode *anchor, Hash *hash,
                                    HamtCmpFn cmp_eq, const void *key)
 {
     PathResult pr;
@@ -663,11 +660,11 @@ static PathResult path_copy_search(HamtNode *anchor, Hash hash,
 static const HAMT pset(HAMT h, HamtNode *anchor, HamtKeyHashFn hash_fn,
                        HamtCmpFn cmp_fn, void *key, void *value)
 {
-    Hash hash = {.key = key,
-                 .hash_fn = hash_fn,
-                 .hash = hash_fn(key, 0),
-                 .depth = 0,
-                 .shift = 0};
+    Hash *hash = &(Hash){.key = key,
+                         .hash_fn = hash_fn,
+                         .hash = hash_fn(key, 0),
+                         .depth = 0,
+                         .shift = 0};
     HAMT cp = hamt_dup(h);
     PathResult pr = path_copy_search(anchor, hash, cmp_fn, key);
     cp->root = pr.root;
@@ -695,7 +692,7 @@ const HAMT hamt_pset(HAMT trie, void *key, void *value)
 }
 
 static RemoveResult path_copy_rem_recurse(HamtNode *root, HamtNode *anchor,
-                                          Hash hash, HamtCmpFn cmp_eq,
+                                          Hash *hash, HamtCmpFn cmp_eq,
                                           const void *key, HamtNode *copy)
 {
     assert(!is_value(VALUE(anchor)) &&
@@ -705,7 +702,7 @@ static RemoveResult path_copy_rem_recurse(HamtNode *root, HamtNode *anchor,
     INDEX(copy) = INDEX(anchor);
     assert(!is_value(VALUE(copy)) && "Copy caused a leaf/internal switch");
     /* determine the expected index in table */
-    uint32_t expected_index = hash_get_index(&hash);
+    uint32_t expected_index = hash_get_index(hash);
     /* check if the expected index is set */
     if (has_index(copy, expected_index)) {
         /* if yes, get the compact index to address the array */
@@ -746,7 +743,7 @@ static RemoveResult path_copy_rem_recurse(HamtNode *root, HamtNode *anchor,
             assert(TABLE(next) != NULL &&
                    "invariant: table ptrs must not be NULL");
             RemoveResult result = path_copy_rem_recurse(
-                root, next, hash_step(hash), cmp_eq, key, next);
+                root, next, hash_next(hash), cmp_eq, key, next);
             if (next != TABLE(root) && result.status == REMOVE_GATHERED) {
                 /* remove dangling internal nodes: check if we need to
                  * propagate the gathering of the key-value entry */
@@ -764,7 +761,7 @@ static RemoveResult path_copy_rem_recurse(HamtNode *root, HamtNode *anchor,
     return (RemoveResult){.status = REMOVE_NOTFOUND, .value = NULL};
 }
 
-static PathResult path_copy_rem(HamtNode *root, HamtNode *anchor, Hash hash,
+static PathResult path_copy_rem(HamtNode *root, HamtNode *anchor, Hash *hash,
                                 HamtCmpFn cmp_eq, const void *key)
 {
     PathResult pr;
@@ -775,11 +772,11 @@ static PathResult path_copy_rem(HamtNode *root, HamtNode *anchor, Hash hash,
 
 HAMT hamt_premove(HAMT trie, void *key)
 {
-    Hash hash = {.key = key,
-                 .hash_fn = trie->key_hash,
-                 .hash = trie->key_hash(key, 0),
-                 .depth = 0,
-                 .shift = 0};
+    Hash *hash = &(Hash){.key = key,
+                         .hash_fn = trie->key_hash,
+                         .hash = trie->key_hash(key, 0),
+                         .depth = 0,
+                         .shift = 0};
     HAMT cp = hamt_dup(trie);
     PathResult pr =
         path_copy_rem(trie->root, trie->root, hash, trie->key_cmp, key);
