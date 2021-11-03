@@ -13,6 +13,37 @@ The documentation starts with a introduction into hash array mapped
 tries, giving an overview over the foundational building blocks (tries,
 hashing) and how they come together in a HAMT.
 
+## Table of Contents
+
+   * [hamt](#hamt)
+      * [Structure](#structure)
+      * [Waht's a HAMT?](#wahts-a-hamt)
+   * [Implememntation](#implememntation)
+      * [Project setup](#project-setup)
+         * [Setup: the hamt.h header file](#setup-the-hamth-header-file)
+         * [Setup: the hamt.c implementation file](#setup-the-hamtc-implementation-file)
+         * [Setup: the minunit framework and out first test](#setup-the-minunit-framework-and-out-first-test)
+         * [Setup: Using make to build the project](#setup-using-make-to-build-the-project)
+      * [Design &amp; foundational data structures](#design--foundational-data-structures)
+      * [Hashing](#hashing)
+         * [Hash generations and state management](#hash-generations-and-state-management)
+      * [Table management](#table-management)
+      * [Putting it all together](#putting-it-all-together)
+         * [Search](#search)
+         * [Insert](#insert)
+         * [Remove](#remove)
+         * [Iterators](#iterators)
+      * [Persistent data structures and structural sharing](#persistent-data-structures-and-structural-sharing)
+         * [Insert](#insert-1)
+         * [Remove](#remove-1)
+      * [Todo](#todo)
+         * [Basic implementation](#basic-implementation)
+         * [Optimization](#optimization)
+         * [Performance testing](#performance-testing)
+         * [Immutability](#immutability)
+         * [Someday](#someday)
+
+
 
 ## Waht's a HAMT?
 
