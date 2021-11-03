@@ -199,6 +199,151 @@ its portability. The Makefile is straightforward, albeit slightly verbatim.
 
 ## Hashing
 
+
+
+```c
+typedef uint32_t (*HamtKeyHashFn)(const void *key, const size_t gen);
+```
+
+* hash functions schould be fast and show good distribution
+* cryptographical security is not an issue
+* examples: Knuth's universal hash, djb2, murmur
+* we're choosing murmur3: simple implementation, great properties
+
+
+```c
+#ifndef MURMUR3_H
+#define MURMUR3_H
+
+#include <stdint.h>
+#include <stdlib.h>
+
+uint32_t murmur3_32(const uint8_t *key, size_t len, uint32_t seed);
+
+#endif
+```
+
+This declares the *murmur* hash function. Takes a `key`, a len to specify the
+number of bytes to hash and, this will turn out to be a very useful feature, a
+random seed.
+
+The definition is short:
+
+```c
+#include "murmur3.h"
+
+#include <string.h>
+
+static inline uint32_t murmur_32_scramble(uint32_t k)
+{
+    k *= 0xcc9e2d51;
+    k = (k << 15) | (k >> 17);
+    k *= 0x1b873593;
+    return k;
+}
+
+uint32_t murmur3_32(const uint8_t *key, size_t len, uint32_t seed)
+{
+    uint32_t h = seed;
+    uint32_t k;
+    /* Read in groups of 4. */
+    for (size_t i = len >> 2; i; i--) {
+        memcpy(&k, key, sizeof(uint32_t));
+        key += sizeof(uint32_t);
+        h ^= murmur_32_scramble(k);
+        h = (h << 13) | (h >> 19);
+        h = h * 5 + 0xe6546b64;
+    }
+    /* Read the rest. */
+    k = 0;
+    for (size_t i = len & 3; i; i--) {
+        k <<= 8;
+        k |= key[i - 1];
+    }
+    h ^= murmur_32_scramble(k);
+    /* Finalize. */
+    h ^= len;
+    h ^= h >> 16;
+    h *= 0x85ebca6b;
+    h ^= h >> 13;
+    h *= 0xc2b2ae35;
+    h ^= h >> 16;
+    return h;
+}
+```
+
+hamt actually has unit tests that validate the murmur hash results against know
+values (add link here)
+
+In order to use murmur3 as a `hamt` hash function, we need to wrap it into a
+helper function:
+
+```c
+static uint32_t my_keyhash_string(const void *key, const size_t gen)
+{
+    uint32_t hash = murmur3_32((uint8_t *)key, strlen((const char *)key), gen);
+    return hash;
+}
+```
+
+Here, the wrapper makes use of `strlen(3)`, assuming valid C strings as keys.
+Note the use of `gen` as a seed for the hash.
+
+
+### Hash generations and state management
+
+For a hash trie, the number of elements in the trie is limited by the total number
+of hashes that fits into a 32-bit `uint32_t`, i.e. 2^32-1. Since the HAMT only
+uses 30 bits (in 6 chunks of 5 bits), the number of unique keys in the trie is
+limited to 2^30-1 = 1,073,741,823 keys. 
+In a related fashin, since every layer of the
+tree uses 5 bits of the hash, this limits the depth of the trie to 6 layers.
+Neither the hard limit to the number of elements in the trie,
+nor the inability to build a trie beyond depth 6 are desirable properties.
+
+To address both issues, `hamt` recalculates the hash with a different seed every
+32/5 = 6 layers. This requires a bit of state management and motivates the
+existence of the `Hash` data type and functions that operate on it:
+
+```c
+typedef struct Hash {
+    const void *key;
+    HamtKeyHashFn hash_fn;
+    uint32_t hash;
+    size_t depth;
+    size_t shift;
+} Hash;
+```
+The struct maintains the pointers `key` to the key that is being hashed and `hash_fn` to the hash function used to calculate the current hash `hash`. At the same time, it tracks the current depth `depth` in the tree (this is the *hash generation*) and the bitshift `shift` of the current 5-bit hash chunk.
+
+The interface provides two functions: the means to step from the current 5-bit
+hash to the next in `hash_step()`; and the ability query the current index of a
+key at the current trie depth in `hash_get_index()`.
+
+```c
+static inline Hash hash_step(const Hash h)
+{
+    Hash hash = {.key = h.key,
+                 .hash_fn = h.hash_fn,
+                 .hash = h.hash,
+                 .depth = h.depth + 1,
+                 .shift = h.shift + 5};
+    if (hash.shift > 30) {
+        hash.hash = hash.hash_fn(hash.key, hash.depth / 5);
+        hash.shift = 0;
+    }
+    return hash;
+}
+```
+
+```c
+static inline uint32_t hash_get_index(const Hash *h)
+{
+    return (h->hash >> h->shift) & 0x1f;
+}
+```
+
+
 ## Table management
 
 ## Putting it all together
