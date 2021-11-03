@@ -220,11 +220,11 @@ MU_TEST_CASE(test_search)
         {"8", SEARCH_SUCCESS, 8},       {"c", SEARCH_FAIL_KEYMISMATCH, 0}};
 
     for (size_t i = 0; i < 10; ++i) {
-        Hash hash = {.key = test_cases[i].key,
-                     .hash_fn = my_hash_1,
-                     .hash = my_hash_1(test_cases[i].key, 0),
-                     .depth = 0,
-                     .shift = 0};
+        Hash *hash = &(Hash){.key = test_cases[i].key,
+                             .hash_fn = my_hash_1,
+                             .hash = my_hash_1(test_cases[i].key, 0),
+                             .depth = 0,
+                             .shift = 0};
         SearchResult sr = search(t.root, hash, my_strncmp_1, test_cases[i].key);
         MU_ASSERT(sr.status == test_cases[i].expected_status,
                   "Unexpected search result status");
@@ -268,11 +268,11 @@ MU_TEST_CASE(test_set_with_collisions)
     /* insert value and find it again */
     const HamtNode *new_node =
         set(t, t->root, t->key_hash, t->key_cmp, &keys[2], &values[2]);
-    Hash hash = {.key = &keys[2],
-                 .hash_fn = t->key_hash,
-                 .hash = t->key_hash(&keys[2], 0),
-                 .depth = 0,
-                 .shift = 0};
+    Hash *hash = &(Hash){.key = &keys[2],
+                         .hash_fn = t->key_hash,
+                         .hash = t->key_hash(&keys[2], 0),
+                         .depth = 0,
+                         .shift = 0};
     SearchResult sr = search(t->root, hash, t->key_cmp, &keys[2]);
     MU_ASSERT(sr.status == SEARCH_SUCCESS, "failed to find inserted value");
     MU_ASSERT(new_node == sr.value, "Query result points to the wrong node");
@@ -296,11 +296,11 @@ MU_TEST_CASE(test_set_whole_enchilada_00)
     }
 
     for (size_t i = 0; i < 5; ++i) {
-        Hash hash = {.key = &data[i].key,
-                     .hash_fn = t->key_hash,
-                     .hash = t->key_hash(&data[i].key, 0),
-                     .depth = 0,
-                     .shift = 0};
+        Hash *hash = &(Hash){.key = &data[i].key,
+                             .hash_fn = t->key_hash,
+                             .hash = t->key_hash(&data[i].key, 0),
+                             .depth = 0,
+                             .shift = 0};
         SearchResult sr = search(t->root, hash, t->key_cmp, &data[i].key);
         MU_ASSERT(sr.status == SEARCH_SUCCESS, "failed to find inserted value");
         int *value = (int *)untagged(sr.value->as.kv.value);
@@ -356,11 +356,11 @@ MU_TEST_CASE(test_set_stringkeys)
 
     for (size_t i = 0; i < 6; ++i) {
         // printf("querying (%s, %d)\n", data[i].key, data[i].value);
-        Hash hash = {.key = data[i].key,
-                     .hash_fn = t->key_hash,
-                     .hash = t->key_hash(data[i].key, 0),
-                     .depth = 0,
-                     .shift = 0};
+        Hash *hash = &(Hash){.key = data[i].key,
+                             .hash_fn = t->key_hash,
+                             .hash = t->key_hash(data[i].key, 0),
+                             .depth = 0,
+                             .shift = 0};
         SearchResult sr = search(t->root, hash, t->key_cmp, data[i].key);
         MU_ASSERT(sr.status == SEARCH_SUCCESS, "failed to find inserted value");
         int *value = (int *)untagged(sr.value->as.kv.value);
@@ -395,18 +395,18 @@ MU_TEST_CASE(test_aspell_dict_en)
 
     /* Check if "bluism" has search depth 7 */
     char target[] = "bluism";
-    Hash hash = {.key = target,
-                 .hash_fn = my_keyhash_string,
-                 .hash = my_keyhash_string(target, 0),
-                 .depth = 0,
-                 .shift = 0};
+    Hash *hash = &(Hash){.key = target,
+                         .hash_fn = my_keyhash_string,
+                         .hash = my_keyhash_string(target, 0),
+                         .depth = 0,
+                         .shift = 0};
     SearchResult sr = search(t->root, hash, t->key_cmp, target);
     MU_ASSERT(sr.status == SEARCH_SUCCESS, "fail");
     char *value = (char *)untagged(sr.value->as.kv.value);
 
     MU_ASSERT(value, "failed to retrieve existing value");
     MU_ASSERT(strcmp(value, target) == 0, "invalid value");
-    MU_ASSERT(sr.hash.depth == 7, "invalid depth");
+    MU_ASSERT(sr.hash->depth == 7, "invalid depth");
 
     hamt_delete(t);
     words_free(words, WORDS_MAX);
@@ -503,11 +503,11 @@ MU_TEST_CASE(test_remove)
                 &data[i].value);
         }
         for (size_t i = 0; i < N; ++i) {
-            Hash hash = {.key = data[i].key,
-                         .hash_fn = t->key_hash,
-                         .hash = t->key_hash(data[i].key, 0),
-                         .depth = 0,
-                         .shift = 0};
+            Hash *hash = &(Hash){.key = data[i].key,
+                                 .hash_fn = t->key_hash,
+                                 .hash = t->key_hash(data[i].key, 0),
+                                 .depth = 0,
+                                 .shift = 0};
             RemoveResult rr =
                 rem(t->root, t->root, hash, t->key_cmp, data[i].key);
             MU_ASSERT(rr.status == REMOVE_SUCCESS ||
@@ -669,18 +669,18 @@ MU_TEST_CASE(test_persistent_aspell_dict_en)
 
     /* Check if "bluism" has search depth 7 */
     char target[] = "bluism";
-    Hash hash = {.key = target,
-                 .hash_fn = my_keyhash_string,
-                 .hash = my_keyhash_string(target, 0),
-                 .depth = 0,
-                 .shift = 0};
+    Hash *hash = &(Hash){.key = target,
+                         .hash_fn = my_keyhash_string,
+                         .hash = my_keyhash_string(target, 0),
+                         .depth = 0,
+                         .shift = 0};
     SearchResult sr = search(t->root, hash, t->key_cmp, target);
     MU_ASSERT(sr.status == SEARCH_SUCCESS, "fail");
     char *value = (char *)untagged(sr.value->as.kv.value);
 
     MU_ASSERT(value, "failed to retrieve existing value");
     MU_ASSERT(strcmp(value, target) == 0, "invalid value");
-    MU_ASSERT(sr.hash.depth == 7, "invalid depth");
+    MU_ASSERT(sr.hash->depth == 7, "invalid depth");
 
     words_free(words, WORDS_MAX);
     /* There is no way to cleanly free the structurally shared
