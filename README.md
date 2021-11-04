@@ -15,10 +15,8 @@ A hash array-mapped trie implementation in C. This is work in progress.
 - [ ] support key/value pairs and sets (?)
 - [ ] typing solution (`#define *_TYPE` and `#include` approach?)
 - [ ] clean up
-  - [ ] anchor concept vs. table gather
   - [x] hash state management (pass by value vs pass by ref)
-  - [ ] nested conditional in inner remove logic is ugly
-  - [ ] TABLE(root) vs root in non-persistent vs persistent case checks
+  - [x] TABLE(root) vs root in non-persistent vs persistent case checks
 - [ ] testing
   - [ ] add mem checks
   - [x] set up github actions

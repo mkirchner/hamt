@@ -71,7 +71,20 @@ static void perf_load_table(size_t reps)
         timer_stop(&ti_load);
         hamt_delete(t);
         words_free_refs(shuffled);
-        print_timer(&ti_load, i, "load_table");
+        print_timer(&ti_load, i, "load");
+    }
+
+    for (size_t i = 0; i < reps; ++i) {
+        t = hamt_create(my_keyhash_string, my_keycmp_string);
+        shuffled = words_create_shuffled_refs(words, WORDS_MAX);
+        timer_start(&ti_load);
+        for (size_t i = 0; i < WORDS_MAX; i++) {
+            t = hamt_pset(t, words[i], words[i]);
+        }
+        timer_stop(&ti_load);
+        hamt_delete(t);
+        words_free_refs(shuffled);
+        print_timer(&ti_load, i, "load_p");
     }
 
     words_free(words, WORDS_MAX);
@@ -100,7 +113,49 @@ static void perf_query_table(size_t reps)
         }
         timer_stop(&ti_query);
         words_free_refs(shuffled);
-        print_timer(&ti_query, i, "query_table");
+        print_timer(&ti_query, i, "query");
+    }
+    /* cleanup */
+    hamt_delete(t);
+
+    words_free(words, WORDS_MAX);
+}
+
+static void perf_rem_table(size_t reps)
+{
+    char **words = NULL;
+    char **shuffled = NULL;
+    HAMT t;
+
+    words_load(&words, WORDS_MAX);
+
+    /* load table */
+    t = hamt_create(my_keyhash_string, my_keycmp_string);
+    for (size_t i = 0; i < WORDS_MAX; i++) {
+        hamt_set(t, words[i], words[i]);
+    }
+
+    struct TimeInterval ti_rem;
+    for (size_t i = 0; i < reps; ++i) {
+        shuffled = words_create_shuffled_refs(words, WORDS_MAX);
+        timer_start(&ti_rem);
+        for (size_t i = 0; i < WORDS_MAX; i++) {
+            hamt_remove(t, words[i]);
+        }
+        timer_stop(&ti_rem);
+        words_free_refs(shuffled);
+        print_timer(&ti_rem, i, "rem");
+    }
+
+    for (size_t i = 0; i < reps; ++i) {
+        shuffled = words_create_shuffled_refs(words, WORDS_MAX);
+        timer_start(&ti_rem);
+        for (size_t i = 0; i < WORDS_MAX; i++) {
+            t = hamt_premove(t, words[i]);
+        }
+        timer_stop(&ti_rem);
+        words_free_refs(shuffled);
+        print_timer(&ti_rem, i, "rem_p");
     }
     /* cleanup */
     hamt_delete(t);
@@ -115,5 +170,6 @@ int main(int argc, char **argv)
     srand(now);
     perf_load_table(25);
     perf_query_table(25);
+    perf_rem_table(25);
     return 0;
 }

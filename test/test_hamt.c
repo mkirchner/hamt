@@ -225,7 +225,7 @@ MU_TEST_CASE(test_search)
                              .hash = my_hash_1(test_cases[i].key, 0),
                              .depth = 0,
                              .shift = 0};
-        SearchResult sr = search(t.root, hash, my_strncmp_1, test_cases[i].key);
+        SearchResult sr = path_copy_search_recurse(t.root, hash, my_strncmp_1, test_cases[i].key, NULL);
         MU_ASSERT(sr.status == test_cases[i].expected_status,
                   "Unexpected search result status");
         if (test_cases[i].expected_status == SEARCH_SUCCESS) {
@@ -273,7 +273,7 @@ MU_TEST_CASE(test_set_with_collisions)
                          .hash = t->key_hash(&keys[2], 0),
                          .depth = 0,
                          .shift = 0};
-    SearchResult sr = search(t->root, hash, t->key_cmp, &keys[2]);
+    SearchResult sr = path_copy_search_recurse(t->root, hash, t->key_cmp, &keys[2], NULL);
     MU_ASSERT(sr.status == SEARCH_SUCCESS, "failed to find inserted value");
     MU_ASSERT(new_node == sr.value, "Query result points to the wrong node");
     hamt_delete(t);
@@ -301,7 +301,7 @@ MU_TEST_CASE(test_set_whole_enchilada_00)
                              .hash = t->key_hash(&data[i].key, 0),
                              .depth = 0,
                              .shift = 0};
-        SearchResult sr = search(t->root, hash, t->key_cmp, &data[i].key);
+        SearchResult sr = path_copy_search_recurse(t->root, hash, t->key_cmp, &data[i].key, NULL);
         MU_ASSERT(sr.status == SEARCH_SUCCESS, "failed to find inserted value");
         int *value = (int *)untagged(sr.value->as.kv.value);
         MU_ASSERT(value, "found value is NULL");
@@ -361,7 +361,7 @@ MU_TEST_CASE(test_set_stringkeys)
                              .hash = t->key_hash(data[i].key, 0),
                              .depth = 0,
                              .shift = 0};
-        SearchResult sr = search(t->root, hash, t->key_cmp, data[i].key);
+        SearchResult sr = path_copy_search_recurse(t->root, hash, t->key_cmp, data[i].key, NULL);
         MU_ASSERT(sr.status == SEARCH_SUCCESS, "failed to find inserted value");
         int *value = (int *)untagged(sr.value->as.kv.value);
         MU_ASSERT(value, "found value is NULL");
@@ -400,7 +400,7 @@ MU_TEST_CASE(test_aspell_dict_en)
                          .hash = my_keyhash_string(target, 0),
                          .depth = 0,
                          .shift = 0};
-    SearchResult sr = search(t->root, hash, t->key_cmp, target);
+    SearchResult sr = path_copy_search_recurse(t->root, hash, t->key_cmp, target, NULL);
     MU_ASSERT(sr.status == SEARCH_SUCCESS, "fail");
     char *value = (char *)untagged(sr.value->as.kv.value);
 
@@ -508,12 +508,12 @@ MU_TEST_CASE(test_remove)
                                  .hash = t->key_hash(data[i].key, 0),
                                  .depth = 0,
                                  .shift = 0};
-            RemoveResult rr =
-                rem(t->root, t->root, hash, t->key_cmp, data[i].key);
-            MU_ASSERT(rr.status == REMOVE_SUCCESS ||
-                          rr.status == REMOVE_GATHERED,
+            PathResult pr =
+                path_copy_rem(t->root, t->root, hash, t->key_cmp, data[i].key);
+            MU_ASSERT(pr.rr.status == REMOVE_SUCCESS ||
+                          pr.rr.status == REMOVE_GATHERED,
                       "failed to find inserted value");
-            MU_ASSERT(*(int *)untagged(rr.value) == data[i].value,
+            MU_ASSERT(*(int *)untagged(pr.rr.value) == data[i].value,
                       "wrong value in remove");
         }
     }
@@ -674,7 +674,7 @@ MU_TEST_CASE(test_persistent_aspell_dict_en)
                          .hash = my_keyhash_string(target, 0),
                          .depth = 0,
                          .shift = 0};
-    SearchResult sr = search(t->root, hash, t->key_cmp, target);
+    SearchResult sr = path_copy_search_recurse(t->root, hash, t->key_cmp, target, NULL);
     MU_ASSERT(sr.status == SEARCH_SUCCESS, "fail");
     char *value = (char *)untagged(sr.value->as.kv.value);
 
