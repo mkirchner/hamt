@@ -508,12 +508,12 @@ MU_TEST_CASE(test_remove)
                                  .hash = t->key_hash(data[i].key, 0),
                                  .depth = 0,
                                  .shift = 0};
-            RemoveResult rr =
-                rem(t->root, t->root, hash, t->key_cmp, data[i].key);
-            MU_ASSERT(rr.status == REMOVE_SUCCESS ||
-                          rr.status == REMOVE_GATHERED,
+            PathResult pr =
+                path_copy_rem(t->root, t->root, hash, t->key_cmp, data[i].key);
+            MU_ASSERT(pr.rr.status == REMOVE_SUCCESS ||
+                          pr.rr.status == REMOVE_GATHERED,
                       "failed to find inserted value");
-            MU_ASSERT(*(int *)untagged(rr.value) == data[i].value,
+            MU_ASSERT(*(int *)untagged(pr.rr.value) == data[i].value,
                       "wrong value in remove");
         }
     }

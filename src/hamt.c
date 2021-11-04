@@ -359,86 +359,6 @@ const void *hamt_set(HAMT trie, void *key, void *value)
     return VALUE(n);
 }
 
-static RemoveResult rem(HamtNode *root, HamtNode *anchor, Hash *hash,
-                        HamtCmpFn cmp_eq, const void *key)
-{
-    assert(!is_value(VALUE(anchor)) &&
-           "Invariant: removal requires an internal node");
-    /* determine the expected index in table */
-    uint32_t expected_index = hash_get_index(hash);
-    /* check if the expected index is set */
-    if (has_index(anchor, expected_index)) {
-        /* if yes, get the compact index to address the array */
-        int pos = get_pos(expected_index, INDEX(anchor));
-        /* index into the table and check what type of entry we're looking at */
-        HamtNode *next = &TABLE(anchor)[pos];
-        if (is_value(VALUE(next))) {
-            if ((*cmp_eq)(key, KEY(next)) == 0) {
-                uint32_t n_rows = get_popcount(INDEX(anchor));
-                void *value = VALUE(next);
-                /* We shrink tables while they have more than 2 rows and switch
-                 * to gathering the subtrie otherwise. The exception is when we
-                 * are at the root, where we must shrink the table to one or
-                 * zero.
-                 */
-                if (n_rows > 2 || (n_rows >= 1 && TABLE(root) == next)) {
-                    anchor =
-                        mem_shrink_table(anchor, n_rows, expected_index, pos);
-                } else if (n_rows == 2) {
-                    HamtNode *other = &TABLE(anchor)[!pos];
-                    /* if both rows are value rows, gather, dropping the current
-                     * row */
-                    if (is_value(VALUE(other))) {
-                        anchor = mem_gather_table(anchor, !pos);
-                        return (RemoveResult){.status = REMOVE_GATHERED,
-                                              .value = value};
-                    } else {
-                        /* otherwise shrink the node to n_rows == 1 */
-                        anchor = mem_shrink_table(anchor, n_rows,
-                                                  expected_index, pos);
-                    }
-                }
-                return (RemoveResult){.status = REMOVE_SUCCESS, .value = value};
-            }
-            /* not found: same hash but different key */
-            return (RemoveResult){.status = REMOVE_NOTFOUND, .value = NULL};
-        } else {
-            /* For table entries, recurse to the next level */
-            assert(TABLE(next) != NULL &&
-                   "invariant: table ptrs must not be NULL");
-            RemoveResult result = rem(root, next, hash_next(hash), cmp_eq, key);
-            if (next != TABLE(root) && result.status == REMOVE_GATHERED) {
-                /* remove dangling internal nodes: check if we need to
-                 * propagate the gathering of the key-value entry */
-                int n_rows = get_popcount(INDEX(anchor));
-                if (n_rows == 1) {
-                    anchor = mem_gather_table(anchor, 0);
-                    return (RemoveResult){.status = REMOVE_GATHERED,
-                                          .value = result.value};
-                }
-            }
-            return (RemoveResult){.status = REMOVE_SUCCESS,
-                                  .value = result.value};
-        }
-    }
-    return (RemoveResult){.status = REMOVE_NOTFOUND, .value = NULL};
-}
-
-void *hamt_remove(HAMT trie, void *key)
-{
-    Hash *hash = &(Hash){.key = key,
-                         .hash_fn = trie->key_hash,
-                         .hash = trie->key_hash(key, 0),
-                         .depth = 0,
-                         .shift = 0};
-    RemoveResult rr = rem(trie->root, trie->root, hash, trie->key_cmp, key);
-    if (rr.status == REMOVE_SUCCESS || rr.status == REMOVE_GATHERED) {
-        trie->size -= 1;
-        return untagged(rr.value);
-    }
-    return NULL;
-}
-
 void delete (HamtNode *anchor)
 {
     if (TABLE(anchor)) {
@@ -577,7 +497,7 @@ const void *hamt_it_get_value(HamtIterator it)
 /*
  * ============    persistent data strcuture code    ===========
  */
-HAMT hamt_dup(const HAMT h)
+HAMT hamt_dup(HAMT h)
 {
     struct HamtImpl *trie = mem_alloc(sizeof(struct HamtImpl));
     trie->root = mem_alloc(sizeof(HamtNode));
@@ -657,7 +577,7 @@ static PathResult path_copy_search(HamtNode *anchor, Hash *hash,
     return pr;
 }
 
-static const HAMT pset(const HAMT h, HamtNode *anchor, HamtKeyHashFn hash_fn,
+static const HAMT pset(HAMT h, HamtNode *anchor, HamtKeyHashFn hash_fn,
                        HamtCmpFn cmp_fn, void *key, void *value)
 {
     Hash *hash = &(Hash){.key = key,
@@ -686,21 +606,26 @@ static const HAMT pset(const HAMT h, HamtNode *anchor, HamtKeyHashFn hash_fn,
     return cp;
 }
 
-const HAMT hamt_pset(const HAMT trie, void *key, void *value)
+const HAMT hamt_pset(HAMT trie, void *key, void *value)
 {
     return pset(trie, trie->root, trie->key_hash, trie->key_cmp, key, value);
 }
 
 static RemoveResult path_copy_rem_recurse(HamtNode *root, HamtNode *anchor,
                                           Hash *hash, HamtCmpFn cmp_eq,
-                                          const void *key, HamtNode *copy)
+                                          const void *key, HamtNode *path)
 {
     assert(!is_value(VALUE(anchor)) &&
            "Invariant: removal requires an internal node");
     /* copy the table we're pointing to */
-    TABLE(copy) = mem_dup_table(anchor);
-    INDEX(copy) = INDEX(anchor);
-    assert(!is_value(VALUE(copy)) && "Copy caused a leaf/internal switch");
+    HamtNode *copy = path;
+    if (copy) {
+        TABLE(copy) = mem_dup_table(anchor);
+        INDEX(copy) = INDEX(anchor);
+        assert(!is_value(VALUE(copy)) && "Copy caused a leaf/internal switch");
+    } else {
+      copy = anchor;
+    }
     /* determine the expected index in table */
     uint32_t expected_index = hash_get_index(hash);
     /* check if the expected index is set */
@@ -786,3 +711,19 @@ const HAMT hamt_premove(const HAMT trie, void *key)
     }
     return cp;
 }
+
+void *hamt_remove(HAMT trie, void *key)
+{
+    Hash *hash = &(Hash){.key = key,
+                         .hash_fn = trie->key_hash,
+                         .hash = trie->key_hash(key, 0),
+                         .depth = 0,
+                         .shift = 0};
+    RemoveResult rr = path_copy_rem_recurse(trie->root, trie->root, hash, trie->key_cmp, key, NULL);
+    if (rr.status == REMOVE_SUCCESS || rr.status == REMOVE_GATHERED) {
+        trie->size -= 1;
+        return untagged(rr.value);
+    }
+    return NULL;
+}
+
