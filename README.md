@@ -12,8 +12,6 @@ A hash array-mapped trie implementation in C. This is work in progress.
 - [x] Pull debug code from `hamt.c`
 - [x] iteration over contents (unsorted, stable)
 - [ ] Add more iterator tests
-- [ ] support key/value pairs and sets (?)
-- [ ] typing solution (`#define *_TYPE` and `#include` approach?)
 - [ ] clean up
   - [x] hash state management (pass by value vs pass by ref)
   - [x] TABLE(root) vs root in non-persistent vs persistent case checks
