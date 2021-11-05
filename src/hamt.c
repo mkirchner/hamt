@@ -266,7 +266,6 @@ static const HamtNode *insert_table(HamtNode *anchor, Hash *hash, void *key,
     return &TABLE(anchor)[pos];
 }
 
-
 HamtNode *mem_dup_table(HamtNode *anchor)
 {
     int n_rows = get_popcount(INDEX(anchor));
@@ -285,12 +284,12 @@ static SearchResult path_copy_search_recurse(HamtNode *anchor, Hash *hash,
            "Invariant: path copy requires an internal node");
     HamtNode *copy = path;
     if (path) {
-      /* copy the table we're pointing to */
-      TABLE(copy) = mem_dup_table(anchor);
-      INDEX(copy) = INDEX(anchor);
-      assert(!is_value(VALUE(copy)) && "Copy caused a leaf/internal switch");
+        /* copy the table we're pointing to */
+        TABLE(copy) = mem_dup_table(anchor);
+        INDEX(copy) = INDEX(anchor);
+        assert(!is_value(VALUE(copy)) && "Copy caused a leaf/internal switch");
     } else {
-      copy = anchor;
+        copy = anchor;
     }
 
     /* determine the expected index in table */
@@ -368,7 +367,8 @@ const void *hamt_get(const HAMT trie, void *key)
                          .hash = trie->key_hash(key, 0),
                          .depth = 0,
                          .shift = 0};
-    SearchResult sr = path_copy_search_recurse(trie->root, hash, trie->key_cmp, key, NULL);
+    SearchResult sr =
+        path_copy_search_recurse(trie->root, hash, trie->key_cmp, key, NULL);
     if (sr.status == SEARCH_SUCCESS) {
         return untagged(sr.VALUE(value));
     }
@@ -587,7 +587,7 @@ static RemoveResult path_copy_rem_recurse(HamtNode *root, HamtNode *anchor,
         INDEX(copy) = INDEX(anchor);
         assert(!is_value(VALUE(copy)) && "Copy caused a leaf/internal switch");
     } else {
-      copy = anchor;
+        copy = anchor;
     }
     /* determine the expected index in table */
     uint32_t expected_index = hash_get_index(hash);
@@ -682,11 +682,11 @@ void *hamt_remove(HAMT trie, void *key)
                          .hash = trie->key_hash(key, 0),
                          .depth = 0,
                          .shift = 0};
-    RemoveResult rr = path_copy_rem_recurse(trie->root, trie->root, hash, trie->key_cmp, key, NULL);
+    RemoveResult rr = path_copy_rem_recurse(trie->root, trie->root, hash,
+                                            trie->key_cmp, key, NULL);
     if (rr.status == REMOVE_SUCCESS || rr.status == REMOVE_GATHERED) {
         trie->size -= 1;
         return untagged(rr.value);
     }
     return NULL;
 }
-
