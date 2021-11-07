@@ -62,7 +62,8 @@ static void perf_load_table(size_t reps)
 
     struct TimeInterval ti_load;
     for (size_t i = 0; i < reps; ++i) {
-        t = hamt_create(my_keyhash_string, my_keycmp_string);
+        t = hamt_create(my_keyhash_string, my_keycmp_string,
+                        &hamt_allocator_default);
         shuffled = words_create_shuffled_refs(words, WORDS_MAX);
         timer_start(&ti_load);
         for (size_t i = 0; i < WORDS_MAX; i++) {
@@ -75,7 +76,8 @@ static void perf_load_table(size_t reps)
     }
 
     for (size_t i = 0; i < reps; ++i) {
-        t = hamt_create(my_keyhash_string, my_keycmp_string);
+        t = hamt_create(my_keyhash_string, my_keycmp_string,
+                        &hamt_allocator_default);
         shuffled = words_create_shuffled_refs(words, WORDS_MAX);
         timer_start(&ti_load);
         for (size_t i = 0; i < WORDS_MAX; i++) {
@@ -99,7 +101,8 @@ static void perf_query_table(size_t reps)
     words_load(&words, WORDS_MAX);
 
     /* load table */
-    t = hamt_create(my_keyhash_string, my_keycmp_string);
+    t = hamt_create(my_keyhash_string, my_keycmp_string,
+                    &hamt_allocator_default);
     for (size_t i = 0; i < WORDS_MAX; i++) {
         hamt_set(t, words[i], words[i]);
     }
@@ -130,7 +133,8 @@ static void perf_rem_table(size_t reps)
     words_load(&words, WORDS_MAX);
 
     /* load table */
-    t = hamt_create(my_keyhash_string, my_keycmp_string);
+    t = hamt_create(my_keyhash_string, my_keycmp_string,
+                    &hamt_allocator_default);
     for (size_t i = 0; i < WORDS_MAX; i++) {
         hamt_set(t, words[i], words[i]);
     }
