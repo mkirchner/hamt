@@ -4,7 +4,6 @@ INC_DIRS := $(shell find $(SRC_DIRS) -type d)
 INC_FLAGS := $(addprefix -I,$(INC_DIRS))
 
 LIB_SRCS := \
-	src/mem.c \
 	src/hamt.c \
 	src/murmur3.c
 
@@ -12,7 +11,6 @@ LIB_OBJS := $(LIB_SRCS:%=$(BUILD_DIR)/%.o)
 LIB_DEPS := $(LIB_OBJS:.o=.d)
 
 TEST_SRCS := \
-	src/mem.c \
 	src/murmur3.c \
 	test/test_hamt.c \
 	test/utils.c \
@@ -23,7 +21,6 @@ TEST_DEPS := $(TEST_OBJS:.o=.d)
 
 PERF_SRCS := \
 	src/hamt.c \
-	src/mem.c \
 	src/murmur3.c \
 	test/perf.c \
 	test/utils.c \

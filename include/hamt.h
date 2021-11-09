@@ -10,7 +10,16 @@ typedef uint32_t (*HamtKeyHashFn)(const void *key, const size_t gen);
 
 typedef struct HamtImpl *HAMT;
 
-HAMT hamt_create(HamtKeyHashFn key_hash, HamtCmpFn key_cmp);
+struct HamtAllocator {
+    void *(*malloc)(const size_t size);
+    void *(*realloc)(void *chunk, const size_t size);
+    void (*free)(void *chunk);
+};
+
+extern struct HamtAllocator hamt_allocator_default;
+
+HAMT hamt_create(HamtKeyHashFn key_hash, HamtCmpFn key_cmp,
+                 struct HamtAllocator *ator);
 void hamt_delete(HAMT);
 
 const void *hamt_get(const HAMT trie, void *key);
