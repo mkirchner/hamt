@@ -1,12 +1,12 @@
 #ifndef HAMT_TEST_WORDS_H
 #define HAMT_TEST_WORDS_H
 
-#include <stdlib.h>
-
 /*
  * Utility constants and functions for the english word list in
  * text/words.txt.
  */
+
+#include <stdlib.h>
 
 extern const size_t WORDS_MAX;
 

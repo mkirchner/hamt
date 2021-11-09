@@ -166,7 +166,7 @@ extern int mu_tests_run;
 
 With `minunit`, every unit test is a `MU_TEST_CASE` which are grouped into
 `MU_TEST_SUITE`s. The folliwing listing shows the basic structure of unit test
-implementations with `minunit`, check the [actual tests]() for a full listing.
+implementations with `minunit`, check the [actual tests](../test) for a full listing.
 Also note that the unit tests include the `hamt.c` implementation file (as
 opposed to just the header). This is a common pattern to enable testing access
 to functions that would otherwise be local to the compilation unit (i.e.
@@ -222,14 +222,40 @@ its portability. The Makefile is straightforward, albeit slightly verbatim.
 
 ![](doc/img/hamt-overview.png)
 
-* The trie
+* What is a trie?
 
+* What is a hash trie?
+
+distinction between trie with and without inner nodes
+
+One of the potential drawbacks of hash tries is that they grow in depth
+linearly with the length of the input. At their core, they are a
+memory-efficient but not necessarily a search-efficient representation. Hash
+tries partially remedy that situation: they use a hash function to pre-process
+the value to be stored in the tree and use the bits of the hash to determine
+the location of a particular value in the tree. The number of bits used at
+every tree depth determines the fan out factor and the eventual depth of the
+tree.
+
+Hash array mapped tries take this idea into prac
+
+enable shallower trees by
+increasing the uniformity of the key distribution
+A hash trie is a trie that uses the *hash* of a value to determine the
+path to and position of the final node in a trie. 
+
+* What is a hash array mapped trie?
+
+
+* How do we represent the data structure in memory?
 
 * Anchor view
 * HamtNode definition
 
 ## Hashing
 
+* what is a hash function?
+* different classes: cryptographically secure, just efficient
 
 
 ```c
@@ -254,11 +280,11 @@ uint32_t murmur3_32(const uint8_t *key, size_t len, uint32_t seed);
 #endif
 ```
 
-This declares the *murmur* hash function. Takes a `key`, a len to specify the
-number of bytes to hash and, this will turn out to be a very useful feature, a
-random seed.
+This declares the *murmur* hash function. In its standard form `murmur3_32`
+takes a pointer `key` to byte-sized objects, a count of `len` that speficies
+the number of bytes to hash and a random seed `seed`.
 
-The definition is short:
+Its [definition][murmur3] is concise:
 
 ```c
 #include "murmur3.h"
@@ -294,7 +320,7 @@ uint32_t murmur3_32(const uint8_t *key, size_t len, uint32_t seed)
     h ^= murmur_32_scramble(k);
     /* Finalize. */
     h ^= len;
-    h ^= h >> 16;
+    h ^= h >> 16
     h *= 0x85ebca6b;
     h ^= h >> 13;
     h *= 0xc2b2ae35;
@@ -303,7 +329,9 @@ uint32_t murmur3_32(const uint8_t *key, size_t len, uint32_t seed)
 }
 ```
 
-hamt actually has unit tests that validate the murmur hash results against know
+[Add some info about murmur3 here]
+
+hamt has unit tests that validate the murmur hash results against know
 values (add link here)
 
 In order to use murmur3 as a `hamt` hash function, we need to wrap it into a
@@ -323,11 +351,12 @@ Note the use of `gen` as a seed for the hash.
 
 ### Hash generations and state management
 
+One challenge with the use of pred
 For a hash trie, the number of elements in the trie is limited by the total number
 of hashes that fits into a 32-bit `uint32_t`, i.e. 2^32-1. Since the HAMT only
 uses 30 bits (in 6 chunks of 5 bits), the number of unique keys in the trie is
 limited to 2^30-1 = 1,073,741,823 keys. 
-In a related fashin, since every layer of the
+In a related fashion, since every layer of the
 tree uses 5 bits of the hash, this limits the depth of the trie to 6 layers.
 Neither the hard limit to the number of elements in the trie,
 nor the inability to build a trie beyond depth 6 are desirable properties.
@@ -345,25 +374,25 @@ typedef struct Hash {
     size_t shift;
 } Hash;
 ```
-The struct maintains the pointers `key` to the key that is being hashed and `hash_fn` to the hash function used to calculate the current hash `hash`. At the same time, it tracks the current depth `depth` in the tree (this is the *hash generation*) and the bitshift `shift` of the current 5-bit hash chunk.
+The struct maintains the pointers `key` to the key that is being hashed and
+`hash_fn` to the hash function used to calculate the current hash `hash`. At
+the same time, it tracks the current depth `depth` in the tree (this is the
+*hash generation*) and the bitshift `shift` of the current 5-bit hash chunk.
 
 The interface provides two functions: the means to step from the current 5-bit
-hash to the next in `hash_step()`; and the ability query the current index of a
+hash to the next in `hash_next()`; and the ability query the current index of a
 key at the current trie depth in `hash_get_index()`.
 
 ```c
-static inline Hash hash_step(const Hash h)
+static inline Hash *hash_next(Hash *h)
 {
-    Hash hash = {.key = h.key,
-                 .hash_fn = h.hash_fn,
-                 .hash = h.hash,
-                 .depth = h.depth + 1,
-                 .shift = h.shift + 5};
-    if (hash.shift > 30) {
-        hash.hash = hash.hash_fn(hash.key, hash.depth / 5);
-        hash.shift = 0;
+    h->depth += 1;
+    h->shift += 5;
+    if (h->shift > 30) {
+        h->hash = h->hash_fn(h->key, h->depth / 5);
+        h->shift = 0;
     }
-    return hash;
+    return h;
 }
 ```
 
@@ -389,6 +418,8 @@ static inline uint32_t hash_get_index(const Hash *h)
 
 ## Persistent data structures and structural sharing
 
+### Basic idea: path copying
+
 ### Insert
 
 ### Remove
@@ -400,37 +431,14 @@ static inline uint32_t hash_get_index(const Hash *h)
 
 ### Basic implementation
 
-- [x] add basic tests for depth>5
-- [x] `hamt_remove(key)`
-- [x] `hamt_size(handle)`
-- [x] `hamt_delete(handle)`
-- [x] Pull debug code from `hamt.c`
-- [x] iteration over contents (unsorted, stable)
-- [ ] clean up
-  - [ ] anchor concept vs. table gather
-  - [ ] hash state management (pass by value vs pass by ref)
-  - [ ] nested conditional in inner remove logic is ugly
-  - [ ] TABLE(root) vs root in non-persistent vs persistent case checks
 - [ ] testing
-  - [ ] add mem checks
-  - [x] set up github actions
+  - [ ] add mem checks, possibly using the Boehm GC?
 - [ ] docs
-
-### Optimization
-
-- [ ] add custom allocator
-- [ ] remove recursion?
 
 ### Performance testing
 
 - [x] set up perf test tooling
-- [ ] decide on ref implementations
 - [ ] implement perf tests suite
-
-### Immutability
-
-- [x] path copying for `set`
-- [x] path copying for `remove`
 
 ### Someday
 
