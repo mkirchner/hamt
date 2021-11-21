@@ -99,9 +99,9 @@ void hamt_delete(HAMT h)
 }
 ```
 
-### Setup: the `minunit` framework and out first test
+### Unit testing with `minunit`
 
-For unit testing, `hamt` uses a variant of [John Brewer's `minunit` testing
+For testing, `hamt` uses a variant of [John Brewer's `minunit` testing
 framework][brewer_xx_minunit]. Minunit is extremely minimalistic and its
 header-only implementation easily fits on a single page:
 
