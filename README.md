@@ -374,9 +374,9 @@ static inline uint32_t hash_get_index(const Hash *h)
 
 # Footnotes
 
-<b id="f1">1</b> `make` first appeared in 1976, has (in numerous incarnations)
-stood the tests of time and still is the most straightforward approach for
-portable build specifications in small projects (and some would argue in large
-ones, too).  [↩](#a1)
+<b id="fn_make">1</b> `make` first appeared in 1976, has (in numerous
+incarnations) stood the tests of time and still is the most straightforward
+approach for portable build specifications in small projects (and some would
+argue in large ones, too).  [↩](#a1)
 
 
