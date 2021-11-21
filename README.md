@@ -21,9 +21,11 @@ hashing) and how they come together in a HAMT.
   * Rely on hash function for balancing (as opposed to RB/AVR etc trees)
   * 32-ary internal nodes, wide fan-out
 
-# Implememntation
+# Implementation
 
-## Project setup
+## Setup
+
+### Project structure
 
 The `hamt` source tree has the following structure:
 
@@ -45,59 +47,6 @@ loading and benchmarking functions).
 The build process is governed by a single Makefile. While one could split the
 Makefile by folder, the single-file solution is a better tradeoff for
 simplicity.
-
-In order to get started, we need four pieces:
-
-1. The  `include/hamt.h` header file in which we define the public interface.
-   For now, we start with a very basic interface that we will re-visit
-   [at a later point](#fixme).
-2. A dummy implementation of the functions defined in the interface so we can
-   successfully compile the project. The implementation will reside in
-   `src/hamt.c`.
-3. A simple test case, so we have something to run once the compilation
-   is done.
-4. A `Makefile` that ties it all together.
-
-### Setup: the `hamt.h` header file
-
-At the very least, the interface needs to define a data structure (i.e. what will
-eventually be our HAMT implementation) and a set of functions that operate on
-it:
-
-```c
-#ifndef HAMT_H
-#define HAMT_H
-
-#include <stddef.h>
-#include <stdint.h>
-
-typedef struct HamtImpl *HAMT;
-
-HAMT hamt_create();
-void hamt_delete(HAMT);
-```
-
-### Setup: the `hamt.c` implementation file
-
-We also add a preliminary implementation so we can make sure the build system
-works:
-
-```c
-struct HamtImpl {
-    void* dummy;
-};
-
-
-HAMT hamt_create()
-{
-    return (struct HamtImpl*) malloc(sizeof(struct HamtImpl));
-}
-
-void hamt_delete(HAMT h)
-{
-    free(h):
-}
-```
 
 ### Unit testing with `minunit`
 
@@ -141,15 +90,12 @@ short-circuting the remaining test suite. The header also declares a global
 variable `mu_tests_run` that keeps track of the total number of executed
 tests.
 
-The folliwing listing shows the basic structure of unit test
-implementations with `minunit`, check the [actual tests](../test) for a full listing.
-
-Note that the test setup
-`include`s the `hamt.c` implementation file. This is a common trick used in unit
-testing to gain easy access to testing `static` functions that would otherwise be
-inaccessible since they are not defined in the `hamt.h` header file.
+The following listing illustrates the basic structure of unit test
+implementations with `minunit`, check the [actual tests](test/test_hamt.c) for
+a full listing.
 
 ```c
+// test/test_hamt.c
 #include "minunit.h"
 #include "../src/hamt.c"
 
@@ -186,16 +132,17 @@ int main()
 }
 ```
 
-Including the `hamt.c` implementation file requires a bit of care in
+Note that the test setup `include`s the `hamt.c` implementation file. This is a
+common trick used in unit testing to gain easy access to testing `static`
+functions that would otherwise be inaccessible since they are local to the
+`hamt.c` compilation unit. This requires some caoe in 
 the Makefile setup in order to avoid symbol duplication.
 
 [brewer_xx_minunit]: http://www.jera.com/techinfo/jtns/jtn002.html
 
-### Setup: Using `make` to build the project
+### Building the project with `make`
 
-`hamt` uses `make` as a build system for its simplicity in small projects and
-its portability. The Makefile is straightforward, albeit slightly verbatim.
-
+`hamt` uses `make` as a build system<sup id="ac_make">[1](#fn_make)</sup>. 
 
 ## Design & foundational data structures
 
@@ -424,3 +371,12 @@ static inline uint32_t hash_get_index(const Hash *h)
 * Add more iterator tests
 * support key/value pairs and sets (?)
 * typing solution (`#define *_TYPE` and `#include` approach?)
+
+# Footnotes
+
+<b id="f1">1</b> `make` first appeared in 1976, has (in numerous incarnations)
+stood the tests of time and still is the most straightforward approach for
+portable build specifications in small projects (and some would argue in large
+ones, too).  [↩](#a1)
+
+
