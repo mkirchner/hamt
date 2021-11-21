@@ -15,36 +15,6 @@ hashing) and how they come together in a HAMT.
 
 ## Table of Contents
 
-   * [hamt](#hamt)
-      * [Structure](#structure)
-      * [Waht's a HAMT?](#wahts-a-hamt)
-   * [Implememntation](#implememntation)
-      * [Project setup](#project-setup)
-         * [Setup: the hamt.h header file](#setup-the-hamth-header-file)
-         * [Setup: the hamt.c implementation file](#setup-the-hamtc-implementation-file)
-         * [Setup: the minunit framework and out first test](#setup-the-minunit-framework-and-out-first-test)
-         * [Setup: Using make to build the project](#setup-using-make-to-build-the-project)
-      * [Design &amp; foundational data structures](#design--foundational-data-structures)
-      * [Hashing](#hashing)
-         * [Hash generations and state management](#hash-generations-and-state-management)
-      * [Table management](#table-management)
-      * [Putting it all together](#putting-it-all-together)
-         * [Search](#search)
-         * [Insert](#insert)
-         * [Remove](#remove)
-         * [Iterators](#iterators)
-      * [Persistent data structures and structural sharing](#persistent-data-structures-and-structural-sharing)
-         * [Insert](#insert-1)
-         * [Remove](#remove-1)
-      * [Todo](#todo)
-         * [Basic implementation](#basic-implementation)
-         * [Optimization](#optimization)
-         * [Performance testing](#performance-testing)
-         * [Immutability](#immutability)
-         * [Someday](#someday)
-
-
-
 ## Waht's a HAMT?
 
 * Key ideas
@@ -131,17 +101,14 @@ void hamt_delete(HAMT h)
 
 ### Setup: the `minunit` framework and out first test
 
-`hamt` uses the `minunit` testing framework for unit testing. Minunit is a very
-minimalistic framework and its implementation fits on a single page of a single
-header file (in our case: `minunit.h`):
+For unit testing, `hamt` uses a variant of [John Brewer's `minunit` testing
+framework][brewer_xx_minunit]. Minunit is extremely minimalistic and its
+header-only implementation easily fits on a single page:
 
 ```c
+// test/minunit.h
 #ifndef MINUNIT_H
 #define MINUNIT_H
-
-/*
- * Based on: http://www.jera.com/techinfo/jtns/jtn002.html
- */
 
 #define MU_ASSERT(test, message)                                               \
     do {                                                                       \
@@ -164,13 +131,23 @@ extern int mu_tests_run;
 #endif /* !MINUNIT_H */
 ```
 
-With `minunit`, every unit test is a `MU_TEST_CASE` which are grouped into
-`MU_TEST_SUITE`s. The folliwing listing shows the basic structure of unit test
+With `minunit`, every unit test is a `MU_TEST_CASE` We use `MU_ASSERT` to test
+the test invariants.  Test cases are grouped into `MU_TEST_SUITE`s as
+sequential calls to `MU_RUN_TEST`.  When an assertion fails, the `return`
+statement in `MU_ASSERT` short-circuts test execution and returns a non-null
+pointer to the respective `message` (generally a static string). This, in turn,
+causes `MU_RUN_TEST` to issue a `return` call with the string pointer,
+short-circuting the remaining test suite. The header also declares a global
+variable `mu_tests_run` that keeps track of the total number of executed
+tests.
+
+The folliwing listing shows the basic structure of unit test
 implementations with `minunit`, check the [actual tests](../test) for a full listing.
-Also note that the unit tests include the `hamt.c` implementation file (as
-opposed to just the header). This is a common pattern to enable testing access
-to functions that would otherwise be local to the compilation unit (i.e.
-functions declared as  `static`).
+
+Note that the test setup
+`include`s the `hamt.c` implementation file. This is a common trick used in unit
+testing to gain easy access to testing `static` functions that would otherwise be
+inaccessible since they are not defined in the `hamt.h` header file.
 
 ```c
 #include "minunit.h"
@@ -181,7 +158,7 @@ int mu_tests_run = 0;
 MU_TEST_CASE(dummy)
 {
     /* do something here */
-    MU_ASSERT(0 == 0, "Zero is nonzero, that's bad");
+    MU_ASSERT(0 == 0, "Oops X-{");
     return 0;
 }
 
@@ -211,6 +188,8 @@ int main()
 
 Including the `hamt.c` implementation file requires a bit of care in
 the Makefile setup in order to avoid symbol duplication.
+
+[brewer_xx_minunit]: http://www.jera.com/techinfo/jtns/jtn002.html
 
 ### Setup: Using `make` to build the project
 
