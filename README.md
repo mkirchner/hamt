@@ -135,14 +135,21 @@ int main()
 Note that the test setup `include`s the `hamt.c` implementation file. This is a
 common trick used in unit testing to gain easy access to testing `static`
 functions that would otherwise be inaccessible since they are local to the
-`hamt.c` compilation unit. This requires some caoe in 
+`hamt.c` compilation unit. This requires some care in 
 the Makefile setup in order to avoid symbol duplication.
 
 [brewer_xx_minunit]: http://www.jera.com/techinfo/jtns/jtn002.html
 
-### Building the project with `make`
+### Building the project
 
-`hamt` uses `make` as a build system<sup id="ac_make">[1](#fn_make)</sup>. 
+`hamt` uses `make` as a build system<sup id="ac_make">[1](#fn_make)</sup>, with
+three targets:i
+1. `make` or `make lib` builds the shared library `libhamt.dylib`
+2. `make test` builds and executes the tests, and
+3. `make perf` builds and executes the performance tests, and creates a simple
+   box plot. This target requires a Python 3 installation w/ `matplotlib` and
+   `pandas` packages.
+
 
 ## Design & foundational data structures
 
@@ -374,9 +381,9 @@ static inline uint32_t hash_get_index(const Hash *h)
 
 # Footnotes
 
-<b id="fn_make">1</b> `make` first appeared in 1976, has (in numerous
+<b id="fn_make">[1]</b> `make` first appeared in 1976, has (in numerous
 incarnations) stood the tests of time and still is the most straightforward
 approach for portable build specifications in small projects (and some would
-argue in large ones, too).  [↩](#a1)
+argue in large ones, too).  [↩](#ac_make)
 
 
