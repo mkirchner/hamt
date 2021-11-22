@@ -21,6 +21,118 @@ hashing) and how they come together in a HAMT.
   * Rely on hash function for balancing (as opposed to RB/AVR etc trees)
   * 32-ary internal nodes, wide fan-out
 
+# API
+
+`hamt`
+
+## HAMT lifecycle
+
+```c
+typedef struct HamtImpl *HAMT;
+typedef int (*HamtCmpFn)(const void *lhs, const void *rhs);
+typedef uint32_t (*HamtKeyHashFn)(const void *key, const size_t gen);
+
+
+HAMT hamt_create(HamtKeyHashFn key_hash, HamtCmpFn key_cmp,
+                 struct HamtAllocator *ator);
+void hamt_delete(HAMT);
+```
+### Memory management
+
+```c
+struct HamtAllocator {
+    void *(*malloc)(const size_t size);
+    void *(*realloc)(void *chunk, const size_t size);
+    void (*free)(void *chunk);
+};
+
+extern struct HamtAllocator hamt_allocator_default;
+```
+
+## Query
+
+```c
+size_t hamt_size(const HAMT trie);
+const void *hamt_get(const HAMT trie, void *key);
+```
+
+```c
+typedef struct HamtIteratorImpl *HamtIterator;
+
+HamtIterator hamt_it_create(const HAMT trie);
+void hamt_it_delete(HamtIterator it);
+bool hamt_it_valid(HamtIterator it);
+HamtIterator hamt_it_next(HamtIterator it);
+const void *hamt_it_get_key(HamtIterator it);
+const void *hamt_it_get_value(HamtIterator it);
+```
+
+## Modification
+
+```c
+const void *hamt_set(HAMT trie, void *key, void *value);
+void *hamt_remove(HAMT trie, void *key);
+```
+
+## Persistent data structure
+
+```c
+const HAMT hamt_pset(const HAMT trie, void *key, void *value);
+const HAMT hamt_premove(const HAMT trie, void *key);
+```
+
+## Example: in-place modification w/ standard allocation
+
+```c
+#include <stdint.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+
+#include "hamt.h"
+#include "murmur3.h"
+
+
+static uint32_t hash_string(const void *key, const size_t gen)
+{
+    return murmur3_32((uint8_t *)key, strlen((const char *)key), gen);
+}
+
+int main(int argn, char *argv[])
+{
+    enum { N = 5; };
+    struct {
+        char *country;
+        char *capital;
+    } cities[N] = {
+        {"Germany", "Berlin"},
+        {"Spain", "Madrid"},
+        {"Italy", "Rome"},
+        {"France", "Paris"},
+        {"Romania", "Bucharest"}
+        /* ... */
+    };
+
+    HAMT t;
+
+    /* create table */
+    t = hamt_create(hash_string, strcmp, &hamt_allocator_default);
+    /* load table */
+    for (size_t i = 0; i < N; i++) {
+        hamt_set(t, cities[i].country, cities[i].capital);
+    }
+
+    /* query table */
+    for (size_t i = 0; i < N; i++) {
+        printf("%s has capital %s\n", cities[i].country,
+                                      hamt_get(t, cities[i].country));
+    }
+    /* cleanup */
+    hamt_delete(t);
+    return 0;
+}
+```
+
 # Implementation
 
 ## Setup
@@ -142,8 +254,14 @@ the Makefile setup in order to avoid symbol duplication.
 
 ### Building the project
 
-`hamt` uses `make` as a build system<sup id="ac_make">[1](#fn_make)</sup>, with
-three targets:i
+For the impatient:
+
+```
+$ make && make test
+```
+
+We use `make` as a build system<sup id="ac_make">[1](#fn_make)</sup>, with
+three targets:
 1. `make` or `make lib` builds the shared library `libhamt.dylib`
 2. `make test` builds and executes the tests, and
 3. `make perf` builds and executes the performance tests, and creates a simple
