@@ -3,11 +3,26 @@ A hash array-mapped trie (HAMT) implementation in C99. The implementation
 follows Bagwell's 2000 paper[[1]][bagwell_00_ideal], with a focus on clarity
 rather than raw speed.
 
-The original motivation for this effort was the desire to implement an efficient
-persistent data structure with structural sharing for maps and sets for [my own Lisp
-implementation][stutter].
+The original motivation for this effort was the desire to understand and
+implement an efficient persistent data structure with structural sharing for
+maps and sets for [my own Lisp implementation][stutter].
+
+What prompted the writeup was the realization that there is not a lot of
+documentation for HAMTs beyond the original Bagwell paper[[1][bagwell_00_ideal]]
+(discounting a set of half-complete blog posts and "read the source"-only
+reference implementations).  Some of the more helpful pieces are [Karl Krukow's
+intro to Clojure's `PersistentHashMap`][krukov_09_understanding], [C. S. Lim's
+C++ template implementation][chaelim_hamt], and [Adrian Coyler's morning paper
+post][coyler_15_champ] on compressed HAMTs. There is more, but it's all in bits
+and pieces.
+
+[krukov_09_understanding]: http://blog.higher-order.net/2009/09/08/understanding-clojures-persistenthashmap-deftwice.html
+[chaelim_hamt]: https://github.com/chaelim/HAMT
+[coyler_15_champ]: https://blog.acolyer.org/2015/11/27/hamt/
 
 ## Quickstart
+
+To build the library and run the tests:
 
 ```bash
 $ git clone git@github.com:mkirchner/hamt.git
@@ -49,8 +64,6 @@ collection, allows for a straightforward and efficient implementation of
 [wiki_hash_tree]: https://en.wikipedia.org/wiki/Hash_tree_(persistent_data_structure)
 [wiki_persistent]: https://en.wikipedia.org/wiki/Persistent_data_structure
 
-* Use cases
-  * key/value store
 * Key ideas
   * Rely on hash function for balancing (as opposed to RB/AVR etc trees)
   * 32-ary internal nodes, wide fan-out
