@@ -1,6 +1,6 @@
 # libhamt
 A hash array-mapped trie (HAMT) implementation in C99. The implementation
-follows Bagwell's 2000 paper [[1]][bagwell_00_ideal], with a focus on clarity
+follows Bagwell's 2000 paper[[1]][bagwell_00_ideal], with a focus on clarity
 rather than raw speed.
 
 The original motivation for this effort was the desire to implement an efficient
@@ -34,8 +34,8 @@ trees][wiki_hash_tree] that combine the characteristics of [hash
 tables][wiki_hash_table] and array mapped [tries][wiki_trie].
 
 The combination enables a advantageous trade-off between speed and memory
-efficiency: HAMTs provide almost hash table-like time complexity guarantees
-[[1]][bagwell_00_ideal] while making much more economic use of memory.
+efficiency: HAMTs provide almost hash table-like time complexity
+guarantees[[1]][bagwell_00_ideal] while making much more economic use of memory.
 Additionally, combining the HAMT tree structure with path copying and garbage
 collection, allows for a straightforward and efficient implementation of
 [persistent][wiki_persistent] maps and sets.
@@ -432,19 +432,18 @@ Here, the wrapper makes use of `strlen(3)`, assuming valid C strings as keys.
 Note the use of `gen` as a seed for the hash.
 
 
-### Hash generations and state management
+### Hash exhaustion: hash generations and state management
 
-One challenge with the use of pred
 For a hash trie, the number of elements in the trie is limited by the total number
 of hashes that fits into a 32-bit `uint32_t`, i.e. 2^32-1. Since the HAMT only
 uses 30 bits (in 6 chunks of 5 bits), the number of unique keys in the trie is
 limited to 2^30-1 = 1,073,741,823 keys. 
-In a related fashion, since every layer of the
-tree uses 5 bits of the hash, this limits the depth of the trie to 6 layers.
+At the same time, since every layer of the
+tree uses 5 bits of the hash, the trie depth is limited to 6 layers.
 Neither the hard limit to the number of elements in the trie,
-nor the inability to build a trie beyond depth 6 are desirable properties.
+nor the inability to build a trie beyond depth of 6 are desirable properties.
 
-To address both issues, `hamt` recalculates the hash with a different seed every
+To address both issues, `libhamt` recalculates the hash with a different seed every
 32/5 = 6 layers. This requires a bit of state management and motivates the
 existence of the `Hash` data type and functions that operate on it:
 
