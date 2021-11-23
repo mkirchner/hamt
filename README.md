@@ -1,6 +1,6 @@
 # hamt
 A hash array-mapped trie (HAMT) implementation in C99. The implementation
-follows the Bagwell 2001 paper [[1]][bagwell_01_ideal].
+follows Bagwell's 2000 paper [[1]][bagwell_00_ideal].
 
 * educational implementation, focus on clarity, portability; decision to
   implement with recursion
@@ -15,15 +15,35 @@ hashing) and how they come together in a HAMT.
 
 ## Table of Contents
 
-## Waht's a HAMT?
+## Introduction
 
+A *hash array mapped trie (HAMT)* implements an [associative
+array][wiki_associative_array].  HAMTs are a specific type of [hash
+trees][wiki_hash_tree] that combines the characteristics of [hash
+tables][wiki_hash_table] and array mapped [tries][wiki_trie].
+
+The combination enables a advantageous trade-off between speed and memory
+efficiency: HAMTs provide almost hash table-like time complexity guarantees
+[[1]][bagwell_00_ideal] and use memory much more economically.  Additionally,
+combining the HAMT tree structure with path copying and garbage collection,
+allows for a straightforward and efficient implementation of
+[persistent][wiki_persistent] maps and sets.
+
+
+
+[wiki_associative_array]: https://en.wikipedia.org/wiki/Associative_array
+[wiki_hash_table]: https://en.wikipedia.org/wiki/Hash_table
+[wiki_trie]: https://en.wikipedia.org/wiki/Trie
+[wiki_hash_tree]: https://en.wikipedia.org/wiki/Hash_tree_(persistent_data_structure)
+[wiki_persistent]: https://en.wikipedia.org/wiki/Persistent_data_structure
+
+* Use cases
+  * key/value store
 * Key ideas
   * Rely on hash function for balancing (as opposed to RB/AVR etc trees)
   * 32-ary internal nodes, wide fan-out
 
 # API
-
-`hamt`
 
 ## HAMT lifecycle
 
@@ -74,7 +94,7 @@ const void *hamt_set(HAMT trie, void *key, void *value);
 void *hamt_remove(HAMT trie, void *key);
 ```
 
-## Persistent data structure
+## Using the HAMT as an efficient persistent data structure
 
 ```c
 const HAMT hamt_pset(const HAMT trie, void *key, void *value);
@@ -213,7 +233,7 @@ a full listing.
 
 int mu_tests_run = 0;
 
-MU_TEST_CASE(dummy)
+MU_TEST_CASE(test_dummy)
 {
     /* do something here */
     MU_ASSERT(0 == 0, "Oops X-{");
@@ -476,7 +496,7 @@ static inline uint32_t hash_get_index(const Hash *h)
 ### Remove
 
 
-[bagwell_01_ideal]: https://lampwww.epfl.ch/papers/idealhashtrees.pdf
+[bagwell_00_ideal]: https://lampwww.epfl.ch/papers/idealhashtrees.pdf
 
 ## Todo
 
