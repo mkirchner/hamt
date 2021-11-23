@@ -1,36 +1,48 @@
-# hamt
+# libhamt
 A hash array-mapped trie (HAMT) implementation in C99. The implementation
-follows Bagwell's 2000 paper [[1]][bagwell_00_ideal].
+follows Bagwell's 2000 paper [[1]][bagwell_00_ideal], with a focus on clarity
+rather than raw speed.
 
-* educational implementation, focus on clarity, portability; decision to
-  implement with recursion
-* initial incentive: building my own Lisp, wanted a high-performance data
-  structure that supports structural sharing for persistent data structures
+The original motivation for this effort was the desire to implement an efficient
+persistent data structure with structural sharing for maps and sets for [my own Lisp
+implementation][stutter].
 
-## Structure
+## Quickstart
+
+```bash
+$ git clone git@github.com:mkirchner/hamt.git
+$ cd hamt
+$ make
+$ make test
+```
+
+In order to use `libhamt` in your own projects, copy `include/hamt.h` and
+`src/hamt.c` in your own source tree and build from there.
+
+## Table of Contents
 
 The documentation starts with a introduction into hash array mapped
 tries, giving an overview over the foundational building blocks (tries,
 hashing) and how they come together in a HAMT.
 
-## Table of Contents
 
 ## Introduction
 
 A *hash array mapped trie (HAMT)* implements an [associative
 array][wiki_associative_array].  HAMTs are a specific type of [hash
-trees][wiki_hash_tree] that combines the characteristics of [hash
+trees][wiki_hash_tree] that combine the characteristics of [hash
 tables][wiki_hash_table] and array mapped [tries][wiki_trie].
 
 The combination enables a advantageous trade-off between speed and memory
 efficiency: HAMTs provide almost hash table-like time complexity guarantees
-[[1]][bagwell_00_ideal] and use memory much more economically.  Additionally,
-combining the HAMT tree structure with path copying and garbage collection,
-allows for a straightforward and efficient implementation of
+[[1]][bagwell_00_ideal] while making much more economic use of memory.
+Additionally, combining the HAMT tree structure with path copying and garbage
+collection, allows for a straightforward and efficient implementation of
 [persistent][wiki_persistent] maps and sets.
 
 
 
+[stutter]: https://github.com/mkirchner/stutter
 [wiki_associative_array]: https://en.wikipedia.org/wiki/Associative_array
 [wiki_hash_table]: https://en.wikipedia.org/wiki/Hash_table
 [wiki_trie]: https://en.wikipedia.org/wiki/Trie
