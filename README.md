@@ -31,10 +31,7 @@ In order to use `libhamt` in your own projects, copy `include/hamt.h` and
 
 ## Table of Contents
 
-* [libhamt](#libhamt)
-   * [Quickstart](#quickstart)
-   * [Table of Contents](#table-of-contents)
-   * [Introduction](#introduction)
+* [Introduction](#introduction)
 * [API](#api)
    * [HAMT lifecycle](#hamt-lifecycle)
       * [Memory management](#memory-management)
@@ -66,13 +63,9 @@ In order to use `libhamt` in your own projects, copy `include/hamt.h` and
       * [Remove](#remove-1)
 * [Appendix](#appendix)
    * [Unit testing](#unit-testing)
-   * [Todo](#todo)
-      * [Basic implementation](#basic-implementation)
-      * [Performance testing](#performance-testing)
-      * [Someday](#someday)
 * [Footnotes](#footnotes)
 
-## Introduction
+# Introduction
 
 A *hash array mapped trie (HAMT)* is a data structure that can be used to
 implement [associative arrays][wiki_associative_array] (aka maps) and
