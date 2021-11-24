@@ -158,6 +158,8 @@ behavior.
 
 ## Modification: Insertion & Removal
 
+
+
 ```c
 const void *hamt_set(HAMT trie, void *key, void *value);
 void *hamt_remove(HAMT trie, void *key);
@@ -172,7 +174,7 @@ const HAMT hamt_premove(const HAMT trie, void *key);
 
 ## Examples
 
-### Example: in-place modification w/ standard allocation
+### Example 1: ephemeral HAMT w/ standard allocation
 
 ```c
 #include <stdint.h>
@@ -222,6 +224,32 @@ int main(int argn, char *argv[])
     hamt_delete(t);
     return 0;
 }
+```
+
+### Example 2: Changes required for garbage collection and persistence
+
+### Example 3: Using iterators
+
+```c
+    ...
+    t = hamt_create(hash_string, strcmp, &hamt_allocator_default);
+
+    /* load table */
+    ...
+
+    /* create iterator */
+    it = hamt_it_create(t);
+    while (hamt_it_valid(it)) {
+        printf("(%s, %s)\n", (char *)hamt_it_get_key(it),
+                             (char *)hamt_it_get_value(it));
+        hamt_it_next(it);
+    }
+    /* clean up */
+    hamt_it_delete(it);
+
+    ...
+    hamt_delete(t);
+    ...
 ```
 
 # Implementation
