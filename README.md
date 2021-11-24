@@ -62,9 +62,11 @@ close with an outlook and an appendix.
 ## HAMT lifecycle
 
 The key data type exported in the `libhamt` interface is `HAMT`. In order to
-create a `HAMT` instance, we need to call `hamt_create()`, which requires a
+create a `HAMT` instance, one must call `hamt_create()`, which requires a
 hash function of type `HamtKeyHashFn` to hash keys, a comparison function of
 type `HamtCmpFn` to compare keys, and a pointer to a `HamtAllocator` instance.
+`hamt_delete()` deletes `HAMT` instances that were created with `hamt_create()`.
+
 
 ```c
 typedef struct HamtImpl *HAMT;
@@ -93,8 +95,6 @@ allocate, re-allocate and deallocate system memory. The API provides a default
 `hamt_allocator_default` which refers to the standard `malloc()`, `realloc()`
 and `free()` functions.
 
-
-
 ```c
 struct HamtAllocator {
     void *(*malloc)(const size_t size);
@@ -105,12 +105,40 @@ struct HamtAllocator {
 extern struct HamtAllocator hamt_allocator_default;
 ```
 
+Exporting the `libhamt` memory management API enables library clients to make
+use of alternate memory management solutions, most notably of garbage collection
+solutions (e.g. the [Boehm-Demers-Weiser GC][boehm_gc]) which are required when
+using the HAMT as a persistent data structure.
+
+[boehm_gc]: https://www.hboehm.info/gc/
+
 ## Query
 
 ```c
 size_t hamt_size(const HAMT trie);
 const void *hamt_get(const HAMT trie, void *key);
 ```
+
+The `hamt_size()` function returns the size of the HAMT in O(1). Querying the
+HAMT (i.e. searching a key) is done with `hamt_get()` which takes a pointer to a
+key and returns a result in O(log<sub>32</sub> n) - or `NULL` if the key does
+not exist in the HAMT.
+
+### Iterators
+
+The API also provides key/value pair access through the `HamtIterator` struct.
+```c
+size_t hamt_size(const HAMT trie);
+const void *hamt_get(const HAMT trie, void *key);
+```
+
+Iterators are tied to a specific HAMT and are created using the
+`hamt_it_create()` function, passing the HAMT instance the iterator should refer
+to. Iterators can be advanced with the `hamt_it_next()` function and as long as
+`hamt_it_valid()` returns `true`, the `hamt_it_get_key()` and
+`hamt_it_get_value()` functions will return the pointers to the current
+key/value pair. In order to delete an existing and/or exhausted iterator, call
+`hamt_it_delete()`.
 
 ```c
 typedef struct HamtIteratorImpl *HamtIterator;
@@ -123,7 +151,12 @@ const void *hamt_it_get_key(HamtIterator it);
 const void *hamt_it_get_value(HamtIterator it);
 ```
 
-## Modification
+Note that iterators maintain state about their traversal path and that changes
+to the underlying HAMT the iterator refers to, will likely cause undefined
+behavior.
+
+
+## Modification: Insertion & Removal
 
 ```c
 const void *hamt_set(HAMT trie, void *key, void *value);
