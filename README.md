@@ -7,14 +7,13 @@ The original motivation for this effort was the desire to understand and
 implement an efficient persistent data structure with structural sharing for
 maps and sets for [my own Lisp implementation][stutter].
 
-What prompted the writeup was the realization that there is not a lot of
-in-depth
-documentation for HAMTs beyond the original Bagwell paper[[1][bagwell_00_ideal]]
-Some of the more helpful posts are [Karl Krukow's
+What prompted the somewhat detailed writeup was the realization that there is
+not a lot of in-depth documentation for HAMTs beyond the original Bagwell
+paper[[1][bagwell_00_ideal]] Some of the more helpful posts are [Karl Krukow's
 intro to Clojure's `PersistentHashMap`][krukov_09_understanding], [C. S. Lim's
 C++ template implementation][chaelim_hamt], and [Adrian Coyler's morning paper
 post][coyler_15_champ] on compressed HAMTs. There is more, but it's all in bits
-and pieces.
+and pieces. This is an attempt to (partially) improve that situation.
 
 ## Quickstart
 
@@ -31,10 +30,6 @@ In order to use `libhamt` in your own projects, copy `include/hamt.h` and
 `src/hamt.c` in your own source tree and build from there.
 
 ## Table of Contents
-
-The documentation starts with a introduction into hash array mapped
-tries, giving an overview over the foundational building blocks (tries,
-hashing) and how they come together in a HAMT.
 
 
 ## Introduction
@@ -53,10 +48,23 @@ augmentation of HAMTs with path copying and garbage collection allows for a
 straightforward and efficient implementation of [persistent][wiki_persistent]
 versions of maps and sets.
 
+The remaining documentation starts with a description of the `libhamt` API and
+two examples that demonstrate the use of a HAMT as an ephemeral and persistent
+data structure, respectively. I then detail the implementation: starting from
+the foundational data structures and the helper code required for hash
+exhaustion and table management, we cover search, insertion, removal, and
+iterators. The final implementation section introduces path copying and explains
+the changes required to support persistent insert and remove operations. We
+close with an outlook and an appendix.
 
 # API
 
 ## HAMT lifecycle
+
+The key data type exported in the `libhamt` interface is `HAMT`. In order to
+create a `HAMT` instance, we need to call `hamt_create()`, which requires a
+hash function of type `HamtKeyHashFn` to hash keys, a comparison function of
+type `HamtCmpFn` to compare keys, and a pointer to a `HamtAllocator` instance.
 
 ```c
 typedef struct HamtImpl *HAMT;
@@ -68,7 +76,24 @@ HAMT hamt_create(HamtKeyHashFn key_hash, HamtCmpFn key_cmp,
                  struct HamtAllocator *ator);
 void hamt_delete(HAMT);
 ```
+
+The `HamtKeyHashFn` takes a `key` and a generation `gen`. The expectation is
+that the supplied hash function returns different hashes for the same key but
+different generations. Depending on the choice of hash function this can be
+implemented using `gen` as a seed or modifying a copy of `key` on the fly.
+See the [examples](#examples) section for a `murmur3`-based implementation and
+the [hashing](#hashing) section for more information on suitable hash functions.
+
+
 ### Memory management
+
+`libhamt` exports its internal memory management API through the `HamtAllocator`
+struct. The struct specifies the functions that the HAMT implementation uses to
+allocate, re-allocate and deallocate system memory. The API provides a default
+`hamt_allocator_default` which refers to the standard `malloc()`, `realloc()`
+and `free()` functions.
+
+
 
 ```c
 struct HamtAllocator {
@@ -112,7 +137,9 @@ const HAMT hamt_pset(const HAMT trie, void *key, void *value);
 const HAMT hamt_premove(const HAMT trie, void *key);
 ```
 
-## Example: in-place modification w/ standard allocation
+## Examples
+
+### Example: in-place modification w/ standard allocation
 
 ```c
 #include <stdint.h>
@@ -216,8 +243,8 @@ three targets:
 <p align="center">
 <img src="doc/img/hamt-overview.png" width="600"></img>
 </p>
-<p class="image-caption">Figure 1: HAMT data structure. `libhamt` implements
-HAMTs using recursive, heap-allocated tables. Table rows can hold two types of
+<p class="image-caption"><b>Figure 1:</b> HAMT data structure. <pre>libhamt</pre> implements
+HAMTs using recursive, heap-allocated tables. Table rows hold one of two types of
 items: either an index vector and pointer to a subtable or pointers to key and
 value (illustrated in blue, and implicit to all empty table fields).</p>
 
@@ -428,6 +455,7 @@ static inline uint32_t hash_get_index(const Hash *h)
 
 ### Remove
 
+# Appendix
 
 ## Unit testing
 
