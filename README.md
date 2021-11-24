@@ -214,7 +214,7 @@ three targets:
 ### Foundational data structures
 
 <p align="center">
-<img src="doc/img/hamt-overview.png" width="400"></img>
+<img src="doc/img/hamt-overview.png" width="600"></img>
 </p>
 <p class="image-caption">Figure 1: HAMT data structure. `libhamt` implements
 HAMTs using recursive, heap-allocated tables. Table rows can hold two types of
