@@ -31,6 +31,46 @@ In order to use `libhamt` in your own projects, copy `include/hamt.h` and
 
 ## Table of Contents
 
+* [libhamt](#libhamt)
+   * [Quickstart](#quickstart)
+   * [Table of Contents](#table-of-contents)
+   * [Introduction](#introduction)
+* [API](#api)
+   * [HAMT lifecycle](#hamt-lifecycle)
+      * [Memory management](#memory-management)
+   * [Query](#query)
+      * [Iterators](#iterators)
+   * [Modification: Insertion &amp; Removal](#modification-insertion--removal)
+   * [Using the HAMT as an efficient persistent data structure](#using-the-hamt-as-an-efficient-persistent-data-structure)
+   * [Examples](#examples)
+      * [Example 1: ephemeral HAMT w/ standard allocation](#example-1-ephemeral-hamt-w-standard-allocation)
+      * [Example 2: Changes required for garbage collection and persistence](#example-2-changes-required-for-garbage-collection-and-persistence)
+      * [Example 3: Using iterators](#example-3-using-iterators)
+* [Implementation](#implementation)
+   * [Setup](#setup)
+      * [Project structure](#project-structure)
+      * [Building the project](#building-the-project)
+   * [Design](#design)
+      * [Foundational data structures](#foundational-data-structures)
+   * [Hashing](#hashing)
+      * [Hash exhaustion: hash generations and state management](#hash-exhaustion-hash-generations-and-state-management)
+   * [Table management](#table-management)
+   * [Putting it all together](#putting-it-all-together)
+      * [Search](#search)
+      * [Insert](#insert)
+      * [Remove](#remove)
+      * [Iterators](#iterators-1)
+   * [Persistent data structures and structural sharing](#persistent-data-structures-and-structural-sharing)
+      * [Basic idea: path copying](#basic-idea-path-copying)
+      * [Insert](#insert-1)
+      * [Remove](#remove-1)
+* [Appendix](#appendix)
+   * [Unit testing](#unit-testing)
+   * [Todo](#todo)
+      * [Basic implementation](#basic-implementation)
+      * [Performance testing](#performance-testing)
+      * [Someday](#someday)
+* [Footnotes](#footnotes)
 
 ## Introduction
 
@@ -230,15 +270,17 @@ int main(int argn, char *argv[])
 
 ### Example 3: Using iterators
 
+Introducing iterators is straightforward:
+
 ```c
     ...
-    t = hamt_create(hash_string, strcmp, &hamt_allocator_default);
+    HAMT t = hamt_create(hash_string, strcmp, &hamt_allocator_default);
 
     /* load table */
     ...
 
     /* create iterator */
-    it = hamt_it_create(t);
+    HamtIterator it = hamt_it_create(t);
     while (hamt_it_valid(it)) {
         printf("(%s, %s)\n", (char *)hamt_it_get_key(it),
                              (char *)hamt_it_get_value(it));
