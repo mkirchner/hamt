@@ -8,9 +8,9 @@ implement an efficient persistent data structure with structural sharing for
 maps and sets for [my own Lisp implementation][stutter].
 
 What prompted the writeup was the realization that there is not a lot of
+in-depth
 documentation for HAMTs beyond the original Bagwell paper[[1][bagwell_00_ideal]]
-(discounting a set of half-complete blog posts and "read the source"-only
-reference implementations).  Some of the more helpful pieces are [Karl Krukow's
+Some of the more helpful posts are [Karl Krukow's
 intro to Clojure's `PersistentHashMap`][krukov_09_understanding], [C. S. Lim's
 C++ template implementation][chaelim_hamt], and [Adrian Coyler's morning paper
 post][coyler_15_champ] on compressed HAMTs. There is more, but it's all in bits
@@ -43,17 +43,23 @@ hashing) and how they come together in a HAMT.
 
 ## Introduction
 
-A *hash array mapped trie (HAMT)* implements an [associative
-array][wiki_associative_array].  HAMTs are a specific type of [hash
-trees][wiki_hash_tree] that combine the characteristics of [hash
-tables][wiki_hash_table] and array mapped [tries][wiki_trie].
+A *hash array mapped trie (HAMT)* is a data structure that can be used to
+implement [associative arrays][wiki_associative_array] (aka maps) and
+[sets][wiki_set_adt].
 
-The combination enables a advantageous trade-off between speed and memory
-efficiency: HAMTs provide almost hash table-like time complexity
-guarantees[[1]][bagwell_00_ideal] while making much more economic use of memory.
-Additionally, combining the HAMT tree structure with path copying and garbage
-collection, allows for a straightforward and efficient implementation of
-[persistent][wiki_persistent] maps and sets.
+Structurally, HAMTs are [hash trees][wiki_hash_tree] that combine favorable
+characteristics of [hash tables][wiki_hash_table] and array mapped
+[tries][wiki_trie], namely almost hash table-like time complexity
+guarantees[[1]][bagwell_00_ideal] (O(log<sub>32</sub>n)) and economic use of memory.
+
+An additional benefit, and a key motivation for the work presented here, is that
+augmentation of HAMTs with path copying and garbage collection allows for a
+straightforward and efficient implementation of [persistent][wiki_persistent]
+versions of maps and sets.
+
+* Key ideas
+  * Rely on hash function for balancing (as opposed to RB/AVR etc trees)
+  * 32-ary internal nodes, wide fan-out
 
 
 
@@ -63,10 +69,7 @@ collection, allows for a straightforward and efficient implementation of
 [wiki_trie]: https://en.wikipedia.org/wiki/Trie
 [wiki_hash_tree]: https://en.wikipedia.org/wiki/Hash_tree_(persistent_data_structure)
 [wiki_persistent]: https://en.wikipedia.org/wiki/Persistent_data_structure
-
-* Key ideas
-  * Rely on hash function for balancing (as opposed to RB/AVR etc trees)
-  * 32-ary internal nodes, wide fan-out
+[wiki_set_adt]: https://en.wikipedia.org/wiki/Set_(abstract_data_type)
 
 # API
 
