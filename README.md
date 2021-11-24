@@ -16,10 +16,6 @@ C++ template implementation][chaelim_hamt], and [Adrian Coyler's morning paper
 post][coyler_15_champ] on compressed HAMTs. There is more, but it's all in bits
 and pieces.
 
-[krukov_09_understanding]: http://blog.higher-order.net/2009/09/08/understanding-clojures-persistenthashmap-deftwice.html
-[chaelim_hamt]: https://github.com/chaelim/HAMT
-[coyler_15_champ]: https://blog.acolyer.org/2015/11/27/hamt/
-
 ## Quickstart
 
 To build the library and run the tests:
@@ -57,19 +53,6 @@ augmentation of HAMTs with path copying and garbage collection allows for a
 straightforward and efficient implementation of [persistent][wiki_persistent]
 versions of maps and sets.
 
-* Key ideas
-  * Rely on hash function for balancing (as opposed to RB/AVR etc trees)
-  * 32-ary internal nodes, wide fan-out
-
-
-
-[stutter]: https://github.com/mkirchner/stutter
-[wiki_associative_array]: https://en.wikipedia.org/wiki/Associative_array
-[wiki_hash_table]: https://en.wikipedia.org/wiki/Hash_table
-[wiki_trie]: https://en.wikipedia.org/wiki/Trie
-[wiki_hash_tree]: https://en.wikipedia.org/wiki/Hash_tree_(persistent_data_structure)
-[wiki_persistent]: https://en.wikipedia.org/wiki/Persistent_data_structure
-[wiki_set_adt]: https://en.wikipedia.org/wiki/Set_(abstract_data_type)
 
 # API
 
@@ -208,97 +191,6 @@ The build process is governed by a single Makefile. While one could split the
 Makefile by folder, the single-file solution is a better tradeoff for
 simplicity.
 
-### Unit testing with `minunit`
-
-For testing, `hamt` uses a variant of [John Brewer's `minunit` testing
-framework][brewer_xx_minunit]. Minunit is extremely minimalistic and its
-header-only implementation easily fits on a single page:
-
-```c
-// test/minunit.h
-#ifndef MINUNIT_H
-#define MINUNIT_H
-
-#define MU_ASSERT(test, message)                                               \
-    do {                                                                       \
-        if (!(test))                                                           \
-            return message;                                                    \
-    } while (0)
-#define MU_RUN_TEST(test)                                                      \
-    do {                                                                       \
-        char *message = test();                                                \
-        mu_tests_run++;                                                        \
-        if (message)                                                           \
-            return message;                                                    \
-    } while (0)
-
-#define MU_TEST_CASE(name) static char *name()
-#define MU_TEST_SUITE(name) static char *name()
-
-extern int mu_tests_run;
-
-#endif /* !MINUNIT_H */
-```
-
-With `minunit`, every unit test is a `MU_TEST_CASE` We use `MU_ASSERT` to test
-the test invariants.  Test cases are grouped into `MU_TEST_SUITE`s as
-sequential calls to `MU_RUN_TEST`.  When an assertion fails, the `return`
-statement in `MU_ASSERT` short-circuts test execution and returns a non-null
-pointer to the respective `message` (generally a static string). This, in turn,
-causes `MU_RUN_TEST` to issue a `return` call with the string pointer,
-short-circuting the remaining test suite. The header also declares a global
-variable `mu_tests_run` that keeps track of the total number of executed
-tests.
-
-The following listing illustrates the basic structure of unit test
-implementations with `minunit`, check the [actual tests](test/test_hamt.c) for
-a full listing.
-
-```c
-// test/test_hamt.c
-#include "minunit.h"
-#include "../src/hamt.c"
-
-int mu_tests_run = 0;
-
-MU_TEST_CASE(test_dummy)
-{
-    /* do something here */
-    MU_ASSERT(0 == 0, "Oops X-{");
-    return 0;
-}
-
-MU_TEST_SUITE(test_suite)
-{
-    /* Add tests here */
-    MU_RUN_TEST(test_dummy);
-    /*
-     * ... many more ...
-     */
-    return 0;
-}
-
-int main()
-{
-    printf("---=[ Hash array mapped trie tests\n");
-    char *result = test_suite();
-    if (result != 0) {
-        printf("%s\n", result);
-    } else {
-        printf("All tests passed.\n");
-    }
-    printf("Tests run: %d\n", tests_run);
-    return result != 0;
-}
-```
-
-Note that the test setup `include`s the `hamt.c` implementation file. This is a
-common trick used in unit testing to gain easy access to testing `static`
-functions that would otherwise be inaccessible since they are local to the
-`hamt.c` compilation unit. This requires some care in 
-the Makefile setup in order to avoid symbol duplication.
-
-[brewer_xx_minunit]: http://www.jera.com/techinfo/jtns/jtn002.html
 
 ### Building the project
 
@@ -311,19 +203,31 @@ $ make && make test
 We use `make` as a build system<sup id="ac_make">[1](#fn_make)</sup>, with
 three targets:
 1. `make` or `make lib` builds the shared library `libhamt.dylib`
-2. `make test` builds and executes the tests, and
+2. `make test` builds a static test executable and runs the tests, and
 3. `make perf` builds and executes the performance tests, and creates a simple
-   box plot. This target requires a Python 3 installation w/ `matplotlib` and
+   box plot. Plotting requires a Python 3 installation w/ `matplotlib` and
    `pandas` packages.
 
 
-## Design & foundational data structures
+## Design
 
-![](doc/img/hamt-overview.png)
+### Foundational data structures
+
+<img src="doc/img/hamt-overview.png" width="400"></img>
+<p class="image-caption">Figure 1: HAMT data structure. `libhamt` implements
+HAMTs using recursive, heap-allocated tables. Table rows can hold two types of
+items: either an index vector and pointer to a subtable or pointers to key and
+value (illustrated in blue, and implicit to all empty table fields).</p>
+
 
 * What is a trie?
 
 * What is a hash trie?
+
+* Key ideas
+  * Rely on hash function for balancing (as opposed to RB/AVR etc trees)
+  * 32-ary internal nodes, wide fan-out
+
 
 distinction between trie with and without inner nodes
 
@@ -523,7 +427,109 @@ static inline uint32_t hash_get_index(const Hash *h)
 ### Remove
 
 
+## Unit testing
+
+For testing, `hamt` uses a variant of [John Brewer's `minunit` testing
+framework][brewer_xx_minunit]. Minunit is extremely minimalistic and its
+header-only implementation easily fits on a single page:
+
+```c
+// test/minunit.h
+#ifndef MINUNIT_H
+#define MINUNIT_H
+
+#define MU_ASSERT(test, message)                                               \
+    do {                                                                       \
+        if (!(test))                                                           \
+            return message;                                                    \
+    } while (0)
+#define MU_RUN_TEST(test)                                                      \
+    do {                                                                       \
+        char *message = test();                                                \
+        mu_tests_run++;                                                        \
+        if (message)                                                           \
+            return message;                                                    \
+    } while (0)
+
+#define MU_TEST_CASE(name) static char *name()
+#define MU_TEST_SUITE(name) static char *name()
+
+extern int mu_tests_run;
+
+#endif /* !MINUNIT_H */
+```
+
+With `minunit`, every unit test is a `MU_TEST_CASE` We use `MU_ASSERT` to test
+the test invariants.  Test cases are grouped into `MU_TEST_SUITE`s as
+sequential calls to `MU_RUN_TEST`.  When an assertion fails, the `return`
+statement in `MU_ASSERT` short-circuts test execution and returns a non-null
+pointer to the respective `message` (generally a static string). This, in turn,
+causes `MU_RUN_TEST` to issue a `return` call with the string pointer,
+short-circuting the remaining test suite. The header also declares a global
+variable `mu_tests_run` that keeps track of the total number of executed
+tests.
+
+The following listing illustrates the basic structure of unit test
+implementations with `minunit`, check the [actual tests](test/test_hamt.c) for
+a full listing.
+
+```c
+// test/test_hamt.c
+#include "minunit.h"
+#include "../src/hamt.c"
+
+int mu_tests_run = 0;
+
+MU_TEST_CASE(test_dummy)
+{
+    /* do something here */
+    MU_ASSERT(0 == 0, "Oops X-{");
+    return 0;
+}
+
+MU_TEST_SUITE(test_suite)
+{
+    /* Add tests here */
+    MU_RUN_TEST(test_dummy);
+    /*
+     * ... many more ...
+     */
+    return 0;
+}
+
+int main()
+{
+    printf("---=[ Hash array mapped trie tests\n");
+    char *result = test_suite();
+    if (result != 0) {
+        printf("%s\n", result);
+    } else {
+        printf("All tests passed.\n");
+    }
+    printf("Tests run: %d\n", tests_run);
+    return result != 0;
+}
+```
+
+Note that the test setup `include`s the `hamt.c` implementation file. This is a
+common trick used in unit testing to gain easy access to testing `static`
+functions that would otherwise be inaccessible since they are local to the
+`hamt.c` compilation unit. This requires some care in
+the Makefile setup in order to avoid symbol duplication.
+
 [bagwell_00_ideal]: https://lampwww.epfl.ch/papers/idealhashtrees.pdf
+[brewer_xx_minunit]: http://www.jera.com/techinfo/jtns/jtn002.html
+[chaelim_hamt]: https://github.com/chaelim/HAMT
+[coyler_15_champ]: https://blog.acolyer.org/2015/11/27/hamt/
+[krukov_09_understanding]: http://blog.higher-order.net/2009/09/08/understanding-clojures-persistenthashmap-deftwice.html
+[stutter]: https://github.com/mkirchner/stutter
+[wiki_associative_array]: https://en.wikipedia.org/wiki/Associative_array
+[wiki_hash_table]: https://en.wikipedia.org/wiki/Hash_table
+[wiki_hash_tree]: https://en.wikipedia.org/wiki/Hash_tree_(persistent_data_structure)
+[wiki_persistent]: https://en.wikipedia.org/wiki/Persistent_data_structure
+[wiki_set_adt]: https://en.wikipedia.org/wiki/Set_(abstract_data_type)
+[wiki_trie]: https://en.wikipedia.org/wiki/Trie
+
 
 ## Todo
 
