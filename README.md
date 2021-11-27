@@ -141,7 +141,8 @@ extern struct HamtAllocator hamt_allocator_default;
 Exporting the `libhamt` memory management API enables library clients to make
 use of alternate memory management solutions, most notably of garbage collection
 solutions (e.g. the [Boehm-Demers-Weiser GC][boehm_gc]) which are required when
-using the HAMT as a persistent data structure.
+using the HAMT as a persistent data structure (see the [structural sharing
+example](#example-2-garbage-collected-persistent-hamts)).
 
 [boehm_gc]: https://www.hboehm.info/gc/
 
@@ -259,7 +260,12 @@ int main(int argn, char *argv[])
 }
 ```
 
-### Example 2: Changes required for garbage collection and persistence
+### Example 2: Garbage-collected persistent HAMTs
+
+The key to making use of structural sharing is to provide `libhamt` with a
+`struct HamtAllocator` instance that implements garbage collection.
+
+The example below uses the the Boehm-Demers-Weiser
 
 ### Example 3: Using iterators
 
