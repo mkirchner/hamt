@@ -272,6 +272,8 @@ In brief, the Boehm GC provides a `gc.h` include file and drop-in replacements
 for the standard memory management functions, including `malloc`, `realloc`
 and `free`.
 
+The following snippet illustrates the required changes:
+
 ```c
 ...
 #include "gc.h"  /* Boehm-Demers-Weiser GC */
@@ -290,7 +292,10 @@ int main(int argc, char *argv[]) {
 }
 ```
 
-
+Note that we set the `gc_alloc.free` function pointer to `NULL` and not to `GC_free`
+which would be the drop-in replacement provided by the garbage collection.
+This ensures that we actually rely on the garbage collector and refrain from
+explicit deletion.
 
 ### Example 3: Using iterators
 
