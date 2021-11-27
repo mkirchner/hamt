@@ -274,11 +274,12 @@ and `free`.
 
 ```c
 ...
-/* include the GC header */
-#include "gc.h"
+#include "gc.h"  /* Boehm-Demers-Weiser GC */
 
+...
+
+int main(int argc, char *argv[]) {
     ...
-
     /*
     Set up garbage collection. We set the function pointer for `free` to
     NULL to avoid explicit freeing of memory.
@@ -286,8 +287,7 @@ and `free`.
     struct HamtAllocator gc_alloc = {GC_malloc, GC_realloc, NULL};
     t = hamt_create(hash_string, strcmp, &gc_alloc);
     ...
-    /* continue as before */
-
+}
 ```
 
 
