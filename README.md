@@ -94,7 +94,7 @@ close with an outlook and an appendix.
 
 ## HAMT lifecycle
 
-The key data type exported in the `libhamt` interface is `HAMT`. In order to
+The core data type exported in the `libhamt` interface is `HAMT`. In order to
 create a `HAMT` instance, one must call `hamt_create()`, which requires a
 hash function of type `HamtKeyHashFn` to hash keys, a comparison function of
 type `HamtCmpFn` to compare keys, and a pointer to a `HamtAllocator` instance.
@@ -327,6 +327,9 @@ iterator is valid. In every interation we print the current key/value pair to
     ...
 ```
 
+This concludes the description of the `libhamt` interface and we now move on
+to detailed implementation notes.
+
 # Implementation
 
 ## Setup
@@ -424,6 +427,7 @@ path to and position of the final node in a trie.
 
 * what is a hash function?
 * different classes: cryptographically secure, just efficient
+It is a one-way function, that is, a function for which it is practically infeasible to invert or reverse the computation.
 
 
 ```c
