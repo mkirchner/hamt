@@ -297,9 +297,13 @@ which would be the drop-in replacement provided by the garbage collection.
 This ensures that we actually rely on the garbage collector and refrain from
 explicit deletion.
 
-### Example 3: Using iterators
+### Example 3: Iterators
 
-Introducing iterators is straightforward:
+The following snipped illustrates how to create, test, exhaust and dispose of
+an iterator. We first create the iterator using `hamt_it_create()`, jump into
+a `while` loop and advance the iterator using `hamt_it_next()` while the
+iterator is valid. In every interation we print the current key/value pair to
+`stdout`. Once we exit the loop, we clean up using `hamt_it_delete()`.
 
 ```c
     ...
