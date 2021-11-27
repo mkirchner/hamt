@@ -144,7 +144,6 @@ solutions (e.g. the [Boehm-Demers-Weiser GC][boehm_gc]) which are required when
 using the HAMT as a persistent data structure (see the [structural sharing
 example](#example-2-garbage-collected-persistent-hamts)).
 
-[boehm_gc]: https://www.hboehm.info/gc/
 
 ## Query
 
@@ -265,7 +264,33 @@ int main(int argn, char *argv[])
 The key to making use of structural sharing is to provide `libhamt` with a
 `struct HamtAllocator` instance that implements garbage collection.
 
-The example below uses the the Boehm-Demers-Weiser
+The example below uses the the [Boehm-Demers-Weiser][boehm_gc] GC. For
+GC installation, compilation and linking instructions, please refer to the GC
+documentation.
+
+In brief, the Boehm GC provides a `gc.h` include file and drop-in replacements
+for the standard memory management functions, including `malloc`, `realloc`
+and `free`.
+
+```c
+...
+/* include the GC header */
+#include "gc.h"
+
+    ...
+
+    /*
+    Set up garbage collection. We set the function pointer for `free` to
+    NULL to avoid explicit freeing of memory.
+    */
+    struct HamtAllocator gc_alloc = {GC_malloc, GC_realloc, NULL};
+    t = hamt_create(hash_string, strcmp, &gc_alloc);
+    ...
+    /* continue as before */
+
+```
+
+
 
 ### Example 3: Using iterators
 
@@ -650,6 +675,7 @@ functions that would otherwise be inaccessible since they are local to the
 the Makefile setup in order to avoid symbol duplication.
 
 [bagwell_00_ideal]: https://lampwww.epfl.ch/papers/idealhashtrees.pdf
+[boehm_gc]: https://www.hboehm.info/gc/
 [brewer_xx_minunit]: http://www.jera.com/techinfo/jtns/jtn002.html
 [chaelim_hamt]: https://github.com/chaelim/HAMT
 [coyler_15_champ]: https://blog.acolyer.org/2015/11/27/hamt/
