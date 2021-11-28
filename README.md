@@ -332,7 +332,7 @@ to detailed implementation notes.
 
 # Implementation
 
-## Setup
+## Prelude: Setup
 
 ### Project structure
 
@@ -348,34 +348,51 @@ hamt/
 ```
 
 Sources are organized in three folders: the `include` folder, for all header
-files that are part of the public `hamt` interface; the `src` folder, for the
+files that are part of the public interface; the `src` folder, for the
 actual implementation and private header files; and the `test` folder, for all
 test code, including headers and sources for testing utilities (e.g. data
 loading and benchmarking functions).
 
-The build process is governed by a single Makefile. While one could split the
-Makefile by folder, the single-file solution is a better tradeoff for
-simplicity.
-
+The build process is governed by a single `Makefile` in the project root
+directory.
 
 ### Building the project
 
-For the impatient:
+To build the library and run the tests:
 
 ```
 $ make && make test
 ```
 
-We use `make` as a build system<sup id="ac_make">[1](#fn_make)</sup>, with
-three targets:
-1. `make` or `make lib` builds the shared library `libhamt.dylib`
-2. `make test` builds a static test executable and runs the tests, and
-3. `make perf` builds and executes the performance tests, and creates a simple
-   box plot. Plotting requires a Python 3 installation w/ `matplotlib` and
-   `pandas` packages.
+And, optionally, to run the performance tests:
 
+```
+$ make perf
+```
+
+The latter requires a somewhat current Python 3 installation with
+`matplotlib` and `pandas` packages for graphing.
 
 ## Design
+
+### Conceptual structure
+
+Hash array mapped tries are n-ary trees with 2 different node types for internal
+and leaf nodes. Internal nodes can point to other internal nodes or leaf
+nodes and only the latter hold actual pointers to the data.
+
+The position of a leaf node within the tree is governed by the hash of its
+key.
+
+1. *hash* trees, i.e. they use the *hash* of a key, interpreted as a sequence of
+   bits, to detetermine the location of the leaf node in which to store the
+   actual key and value;
+2. *array-mapped*, i.e.
+
+Structurally, HAMTs are [hash trees][wiki_hash_tree] that combine favorable
+characteristics of [hash tables][wiki_hash_table] and array mapped
+[tries][wiki_trie], namely almost hash table-like time complexity
+guarantees[[1]][bagwell_00_ideal] (O(log<sub>32</sub>n)) and economic use of memory.
 
 ### Foundational data structures
 
