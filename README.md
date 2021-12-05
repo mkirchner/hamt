@@ -397,7 +397,8 @@ data structure more memory efficient and cache-friendly.
 <p align="center">
 <img src="doc/img/hamt-overview.png" width="600"></img>
 </p>
-<p class="image-caption"><b>Figure 1:</b> HAMT data structure. <pre>libhamt</pre> implements
+<p class="image-caption"><b>Figure 1:</b> HAMT data structure.
+<code>libhamt</code> implements
 HAMTs using recursive, heap-allocated tables. Table rows hold one of two types of
 items: either an index vector and pointer to a subtable or pointers to key and
 value (illustrated in blue, and implicit to all empty table fields).</p>
