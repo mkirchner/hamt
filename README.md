@@ -377,22 +377,20 @@ The latter requires a somewhat current Python 3 installation with
 
 ### Conceptual structure
 
-Hash array mapped tries are n-ary trees with 2 different node types for internal
-and leaf nodes. Internal nodes can point to other internal nodes or leaf
-nodes and only the latter hold actual pointers to the data.
+A hash array mapped trie forms an *n*-ary tree.
+The types are different between internal and leaf nodes: the children of internal
+nodes can either be internal or leaf nodes and only the leaf nodes hold actual
+data (or pointers to that data).
 
-The position of a leaf node within the tree is governed by the hash of its
-key.
+The tree itself is a *hash tree*, i.e. it uses the *hash* of a key i.e. it
+uses the *hash* of a key, interpreted as a sequence of bits, to detetermine
+the location of the leaf node in which to store the actual key and value.
 
-1. *hash* trees, i.e. they use the *hash* of a key, interpreted as a sequence of
-   bits, to detetermine the location of the leaf node in which to store the
-   actual key and value;
-2. *array-mapped*, i.e.
-
-Structurally, HAMTs are [hash trees][wiki_hash_tree] that combine favorable
-characteristics of [hash tables][wiki_hash_table] and array mapped
-[tries][wiki_trie], namely almost hash table-like time complexity
-guarantees[[1]][bagwell_00_ideal] (O(log<sub>32</sub>n)) and economic use of memory.
+The implementation makes use of *array mapping*: instead of storing *n*
+pointers to children in each internal node, the parent node stores a bitmap
+that indicates which children are present and the actual node only allocates
+the memory required to refer to its children. This simultaneously makes the
+data structure more memory efficient and cache-friendly.
 
 ### Foundational data structures
 
