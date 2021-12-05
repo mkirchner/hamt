@@ -386,6 +386,18 @@ The tree itself is a *hash tree*, i.e. it uses the *hash* of a key i.e. it
 uses the *hash* of a key, interpreted as a sequence of bits, to detetermine
 the location of the leaf node in which to store the actual key and value.
 
+* Key ideas
+  * Rely on hash function for balancing (as opposed to RB/AVR etc trees)
+  * 32-ary internal nodes, wide fan-out
+  * enable shallower trees by increasing the uniformity of the key distribution
+* One of the potential drawbacks of tries is that they grow in depth linearly
+  with the length of the input. At their core, they are a memory-efficient but
+  not necessarily a search-efficient representation. Hash tries partially
+  remedy that situation: they use a hash function to pre-process the value to
+  be stored in the tree and use the bits of the hash to determine the location
+  of a particular value in the tree. The number of bits used at every tree
+  depth determines the fan out factor and the eventual depth of the tree.
+
 The implementation makes use of *array mapping*: instead of storing *n*
 pointers to children in each internal node, the parent node stores a bitmap
 that indicates which children are present and the actual node only allocates
@@ -403,41 +415,37 @@ HAMTs using recursive, heap-allocated tables. Table rows hold one of two types o
 items: either an index vector and pointer to a subtable or pointers to key and
 value (illustrated in blue, and implicit to all empty table fields).</p>
 
+```c
+typedef struct HamtNode {
+    union {
+        struct {
+            void *value; /* tagged pointer */
+            void *key;
+        } kv;
+        struct {
+            struct HamtNode *ptr;
+            uint32_t index;
+        } table;
+    } as;
+} HamtNode;
+```
 
-* What is a trie?
+* How to distinguish between node types in a way that allows us to create
+  arrays of mixed type?
+* Common C approach: union w/ tagged pointer to determine node type
+* Note the order of the pairs: since index is not a pointer and the
+  bit-fiddling constrains do not apply, we need to make
+  sure it does not overlap w/ the tagged pointer. Since the pointer to the key
+  is used more often, we opt to tag the value pointer.
+* PS: avoiding mixed type, adding another bitmap mapping and keeping two
+  arrays is a key change in LAMP (double-check this)
 
-* What is a hash trie?
+**Pointer tagging**. Pointers are word-aligned, use lower 3 bits on 64-bit
+arch.
 
-* Key ideas
-  * Rely on hash function for balancing (as opposed to RB/AVR etc trees)
-  * 32-ary internal nodes, wide fan-out
-
-
-distinction between trie with and without inner nodes
-
-One of the potential drawbacks of hash tries is that they grow in depth
-linearly with the length of the input. At their core, they are a
-memory-efficient but not necessarily a search-efficient representation. Hash
-tries partially remedy that situation: they use a hash function to pre-process
-the value to be stored in the tree and use the bits of the hash to determine
-the location of a particular value in the tree. The number of bits used at
-every tree depth determines the fan out factor and the eventual depth of the
-tree.
-
-Hash array mapped tries take this idea into prac
-
-enable shallower trees by
-increasing the uniformity of the key distribution
-A hash trie is a trie that uses the *hash* of a value to determine the
-path to and position of the final node in a trie. 
-
-* What is a hash array mapped trie?
-
-
-* How do we represent the data structure in memory?
+### The Anchor
 
 * Anchor view
-* HamtNode definition
 
 ## Hashing
 
@@ -592,6 +600,109 @@ static inline uint32_t hash_get_index(const Hash *h)
 
 
 ## Table management
+
+
+```c
+HamtNode *table_allocate(struct HamtAllocator *ator, size_t size)
+{
+    return (HamtNode *)mem_alloc(ator, (size * sizeof(HamtNode)));
+}
+```
+
+```c
+void table_free(struct HamtAllocator *ator, HamtNode *ptr, size_t size)
+{
+    mem_free(ator, ptr);
+}
+
+```
+
+```c
+HamtNode *table_extend(struct HamtAllocator *ator, HamtNode *anchor,
+                       size_t n_rows, uint32_t index, uint32_t pos)
+{
+    HamtNode *new_table = table_allocate(ator, n_rows + 1);
+    if (!new_table)
+        return NULL;
+    if (n_rows > 0) {
+        /* copy over table */
+        memcpy(&new_table[0], &TABLE(anchor)[0], pos * sizeof(HamtNode));
+        /* note: this works since (n_rows - pos) == 0 for cases
+         * where we're adding the new k/v pair at the end (i.e. memcpy(a, b, 0)
+         * is a nop) */
+        memcpy(&new_table[pos + 1], &TABLE(anchor)[pos],
+               (n_rows - pos) * sizeof(HamtNode));
+    }
+    assert(!is_value(VALUE(anchor)) && "URGS");
+    table_free(ator, TABLE(anchor), n_rows);
+    TABLE(anchor) = new_table;
+    INDEX(anchor) |= (1 << index);
+    return anchor;
+}
+
+```
+
+```c
+HamtNode *table_shrink(struct HamtAllocator *ator, HamtNode *anchor,
+                       size_t n_rows, uint32_t index, uint32_t pos)
+{
+    /* debug assertions */
+    assert(anchor && "Anchor cannot be NULL");
+    assert(!is_value(VALUE(anchor)) &&
+           "Invariant: shrinking a table requires an internal node");
+
+    HamtNode *new_table = NULL;
+    uint32_t new_index = 0;
+    if (n_rows > 0) {
+        new_table = table_allocate(ator, n_rows - 1);
+        if (!new_table)
+            return NULL;
+        new_index = INDEX(anchor) & ~(1 << index);
+        memcpy(&new_table[0], &TABLE(anchor)[0], pos * sizeof(HamtNode));
+        memcpy(&new_table[pos], &TABLE(anchor)[pos + 1],
+               (n_rows - pos - 1) * sizeof(HamtNode));
+    }
+    table_free(ator, TABLE(anchor), n_rows);
+    INDEX(anchor) = new_index;
+    TABLE(anchor) = new_table;
+    return anchor;
+}
+
+```
+
+```c
+HamtNode *table_gather(struct HamtAllocator *ator, HamtNode *anchor,
+                       uint32_t pos)
+{
+    /* debug assertions */
+    assert(anchor && "Anchor cannot be NULL");
+    assert(!is_value(VALUE(anchor)) &&
+           "Invariant: gathering a table requires an internal anchor");
+    assert((pos == 0 || pos == 1) && "pos must be 0 or 1");
+
+    int n_rows = get_popcount(INDEX(anchor));
+    assert((n_rows == 2 || n_rows == 1) &&
+           "Table must have size 1 or 2 to gather");
+    HamtNode *table = TABLE(anchor);
+    KEY(anchor) = table[pos].as.kv.key;
+    VALUE(anchor) = table[pos].as.kv.value; /* already tagged */
+    table_free(ator, table, n_rows);
+    return anchor;
+}
+
+```
+
+```c
+HamtNode *table_dup(struct HamtAllocator *ator, HamtNode *anchor)
+{
+    int n_rows = get_popcount(INDEX(anchor));
+    HamtNode *new_table = table_allocate(ator, n_rows);
+    if (new_table) {
+        memcpy(&new_table[0], &TABLE(anchor)[0], n_rows * sizeof(HamtNode));
+    }
+    return new_table;
+}
+```
 
 ## Putting it all together
 
