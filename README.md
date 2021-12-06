@@ -229,7 +229,7 @@ h = hamt_pset(h, some_key, some_value);
 ```
 
 This seems wasteful at first glance but the respective functions implement structural
-sharing such that the overhead is limited to *~log(N)* nodes (where *N* is the
+sharing such that the overhead is limited to *~log<sub>32</sub>(N)* nodes (where *N* is the
 number of nodes in the graph).
 
 ```c
