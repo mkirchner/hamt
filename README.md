@@ -189,21 +189,61 @@ to the underlying HAMT the iterator refers to, will likely cause undefined
 behavior.
 
 
-## Modification: Insertion & Removal
+## Insert & Remove
 
+`libhamt` supports [ephemeral][wiki_ephemeral] and
+[persistent][wiki_persistent] HAMTs through two different interfaces:
+`hamt_set()` and `hamt_remove()` for ephemeral use, and their `p`-versions
+`hamt_pset()` and `hamt_premove()` for persistent use.
 
+### Ephemeral modification
 
 ```c
 const void *hamt_set(HAMT trie, void *key, void *value);
 void *hamt_remove(HAMT trie, void *key);
 ```
 
-## Using the HAMT as an efficient persistent data structure
+`hamt_set()` takes a pair of `key` and `value` pointers and adds the pair to the HAMT,
+returning a pointer to the `value`. If the `key` already exists, `hamt_set()`
+updates the pointer to the `value`.
+
+`hamt_remove()` takes a `key` and removes the key/value pair with the
+respective `key` from the HAMT, returning a pointer to the `value` that was
+just removed. If the `key` does not exist, `hamt_remove()` returns `NULL`.
+
+### Persistent HAMTs
+
+The semantics of persistent HAMTs are different from their ephemeral
+counterparts: since every modification creates a new version of a HAMT, the
+modificiation functions return a new HAMT. Modification of a persistent HAMT
+therefore requires a reassignment idiom if the goal is modification only:
+
+```c
+HAMT h = hamt_create(...)
+...
+/* Set a value and drop the reference to the old HAMT; the GC
+ * will take care of cleaning up remaining unreachable allocations.
+ */
+h = hamt_pset(h, some_key, some_value);
+...
+```
+
+This seems wasteful at first glance but the respective functions implement structural
+sharing such that the overhead is limited to *~log(N)* nodes (where *N* is the
+number of nodes in the graph).
 
 ```c
 const HAMT hamt_pset(const HAMT trie, void *key, void *value);
 const HAMT hamt_premove(const HAMT trie, void *key);
 ```
+
+`hamt_pset()` inserts or updates the `key` with `value` and returns an opaque
+handle to the new HAMT. The new HAMT is guaranteed to contain the new
+key/value pair.
+
+`hamt_premove()` attempts to remove the value with the key `key`. It is *not*
+an error if the key does not exist; the new HAMT is guaranteed to not contain
+the key `key`.
 
 ## Examples
 
