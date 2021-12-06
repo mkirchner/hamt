@@ -191,8 +191,8 @@ behavior.
 
 ## Insert & Remove
 
-`libhamt` supports [ephemeral][wiki_ephemeral] and
-[persistent][wiki_persistent] HAMTs through two different interfaces:
+`libhamt` supports ephemeral and
+[persistent][wiki_persistent] (aka not ephemeral) HAMTs through two different interfaces:
 `hamt_set()` and `hamt_remove()` for ephemeral use, and their `p`-versions
 `hamt_pset()` and `hamt_premove()` for persistent use.
 
