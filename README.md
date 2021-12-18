@@ -452,14 +452,33 @@ insert/update and delete functions for HAMTs.
 
 ### Foundational data structures
 
-<p align="center">
-<img src="doc/img/hamt-overview.png" width="600"></img>
-</p>
-<p class="image-caption"><b>Figure 1:</b> HAMT data structure.
-<code>libhamt</code> implements
-HAMTs using recursive, heap-allocated tables. Table rows hold one of two types of
-items: either an index vector and pointer to a subtable or pointers to key and
-value (illustrated in blue, and implicit to all empty table fields).</p>
+`libhamt` implements internal and leaf nodes in two different types called
+`struct table` and `struct kv` respectively.
+
+Leaf nodes are straightforward:
+```c
+struct {
+    void *value;
+    void *key;
+} kv;
+```
+They point to a `key` and a `value` and since C does not afford us with
+templating we make use of `void*` pointers to support arbitrary data types
+(foregoing other, potentially more type-safe solutions that make heavy use of
+the C preprocessor).
+
+Internal nodes are a little more complicated: they will need to hold a pointer `ptr`
+that can point to two different types of of nodes, either `struct kv *` or
+`struct table *` (here called `HamtNode`) and an `index` that keeps track of
+branch occupancy for `ptr`:
+
+```c
+struct {
+    struct HamtNode *ptr;
+    uint32_t index;
+} table;
+```
+The standard C way to enable this is to bring `struct kv` and `struct table` into a `union`:
 
 ```c
 typedef struct HamtNode {
@@ -475,6 +494,19 @@ typedef struct HamtNode {
     } as;
 } HamtNode;
 ```
+This way, the `.as.table.ptr` pointer can point to either type.
+
+<p align="center">
+<img src="doc/img/hamt-overview.png" width="600"></img>
+</p>
+<p class="image-caption"><b>Figure 1:</b> HAMT data structure.
+<code>libhamt</code> implements
+HAMTs using linked, heap-allocated tables. Table rows hold
+either an index vector and pointer to a subtable or pointers to key and
+value (one pair of key/value pointers illustrated in blue, and implicit to all
+empty table fields).</p>
+
+
 
 * How to distinguish between node types in a way that allows us to create
   arrays of mixed type?
@@ -900,5 +932,10 @@ the Makefile setup in order to avoid symbol duplication.
 incarnations) stood the tests of time and still is the most straightforward
 approach for portable build specifications in small projects (and some would
 argue in large ones, too).  [↩](#ac_make)
+
+<b id="fn_void">[2]</b> At the expense of type safety and the ability to
+perform any kind of static checking. There are alternate, more type-safe
+solutions based on preprocessor-controlled code duplication for multiple types.
+[↩](#ac_void)
 
 
