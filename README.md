@@ -452,6 +452,16 @@ insert/update and delete functions for HAMTs.
 
 ### Foundational data structures
 
+<p align="center">
+<img src="doc/img/hamt-overview.png" width="600"></img>
+</p>
+<p class="image-caption"><b>Figure 1:</b> HAMT data structure.
+<code>libhamt</code> implements
+HAMTs using linked, heap-allocated tables. Table rows hold
+either an index vector and pointer to a subtable or pointers to key and
+value (one pair of key/value pointers illustrated in blue, and implicit to all
+empty table fields).</p>
+
 `libhamt` implements internal and leaf nodes in two different types called
 `struct table` and `struct kv` respectively. Leaf nodes are straightforward:
 ```c
@@ -502,15 +512,6 @@ constrains do not apply, we need to make sure it does not overlap w/ the tagged
 pointer. Since the pointer to the key is used more often, we opt to tag the
 value pointer.
 
-<p align="center">
-<img src="doc/img/hamt-overview.png" width="600"></img>
-</p>
-<p class="image-caption"><b>Figure 1:</b> HAMT data structure.
-<code>libhamt</code> implements
-HAMTs using linked, heap-allocated tables. Table rows hold
-either an index vector and pointer to a subtable or pointers to key and
-value (one pair of key/value pointers illustrated in blue, and implicit to all
-empty table fields).</p>
 
 
 
