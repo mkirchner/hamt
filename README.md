@@ -453,9 +453,7 @@ insert/update and delete functions for HAMTs.
 ### Foundational data structures
 
 `libhamt` implements internal and leaf nodes in two different types called
-`struct table` and `struct kv` respectively.
-
-Leaf nodes are straightforward:
+`struct table` and `struct kv` respectively. Leaf nodes are straightforward:
 ```c
 struct {
     void *value;
@@ -467,24 +465,17 @@ templating we make use of `void*` pointers to support arbitrary data types
 (foregoing other, potentially more type-safe solutions that make heavy use of
 the C preprocessor).
 
-Internal nodes are a little more complicated: they will need to hold a pointer `ptr`
-that can point to two different types of of nodes, either `struct kv *` or
-`struct table *` (here called `HamtNode`) and an `index` that keeps track of
-branch occupancy for `ptr`:
-
-```c
-struct {
-    struct HamtNode *ptr;
-    uint32_t index;
-} table;
-```
-The standard C way to enable this is to bring `struct kv` and `struct table` into a `union`:
+Internal nodes are a little more complicated: they will need to hold a pointer
+`ptr` that can point to two different types of of nodes, either `struct kv *`
+or `struct table *` and an `index` that keeps track of branch occupancy for
+`ptr`.  The standard C way to enable this is to bring `struct kv` and `struct
+table` into a `union`:
 
 ```c
 typedef struct HamtNode {
     union {
         struct {
-            void *value; /* tagged pointer */
+            void *value;
             void *key;
         } kv;
         struct {
@@ -494,7 +485,22 @@ typedef struct HamtNode {
     } as;
 } HamtNode;
 ```
-This way, the `.as.table.ptr` pointer can point to either type.
+This way, `HamtNode` is (and `as.table.ptr` points to) a union that can be
+interpreted as either an internal or a leaf node. The question remains how to
+distinguish between node types in a way that allows us to create arrays of
+mixed type? One option would be to add an `enum` field as part of `HamtNode`
+that specifies the type. While possible, there is a more memory-efficient
+solution: pointer tagging.
+
+**Pointer tagging**. Since pointers need to be word-aligned, that leaves the
+lower 3 bits of all pointers on 64-bit architectures set to zero. If we
+carefully mask the actual pointer values when they are used, we can make use of
+these bits to encode the data type.
+
+Note the order of the pairs: since index is not a pointer and the bit-fiddling
+constrains do not apply, we need to make sure it does not overlap w/ the tagged
+pointer. Since the pointer to the key is used more often, we opt to tag the
+value pointer.
 
 <p align="center">
 <img src="doc/img/hamt-overview.png" width="600"></img>
@@ -508,18 +514,9 @@ empty table fields).</p>
 
 
 
-* How to distinguish between node types in a way that allows us to create
-  arrays of mixed type?
-* Common C approach: union w/ tagged pointer to determine node type
-* Note the order of the pairs: since index is not a pointer and the
-  bit-fiddling constrains do not apply, we need to make
-  sure it does not overlap w/ the tagged pointer. Since the pointer to the key
-  is used more often, we opt to tag the value pointer.
 * PS: avoiding mixed type, adding another bitmap mapping and keeping two
   arrays is a key change in LAMP (double-check this)
 
-**Pointer tagging**. Pointers are word-aligned, use lower 3 bits on 64-bit
-arch.
 
 ### The Anchor
 
