@@ -415,34 +415,40 @@ The latter requires a somewhat current Python 3 installation with
 
 ## Design
 
-### Conceptual structure
+### Introduction
 
-A hash array mapped trie forms an *n*-ary tree.
-The types are different between internal and leaf nodes: the children of internal
-nodes can either be internal or leaf nodes and only the leaf nodes hold actual
-data (or pointers to that data).
+A hash array mapped trie forms an *n*-ary tree.  Internal and leaf nodes have
+different types: internal nodes point to *n* internal or leaf nodes and leaf
+nodes hold or point to data (i.e. the keys/value pairs).
 
-The tree itself is a *hash tree*, i.e. it uses the *hash* of a key i.e. it
-uses the *hash* of a key, interpreted as a sequence of bits, to detetermine
-the location of the leaf node in which to store the actual key and value.
+The tree itself is a *hash tree*: it uses the *hash* of the key interpreted as
+a sequence of bits, to detetermine the location of the leaf node that stores
+the key/value pair.  This overcomes one of the potential drawbacks of tries,
+namely that they grow in depth linearly with the length of the input.  Hash
+tries partially remedy that situation: they use a hash function to pre-process
+the value to be stored in the tree and use the bits of the hash to determine
+the location of a particular value in the tree. The number of bits used at
+every tree depth determines the fan out factor and the eventual depth of the
+tree.
 
-* Key ideas
-  * Rely on hash function for balancing (as opposed to RB/AVR etc trees)
-  * 32-ary internal nodes, wide fan-out
-  * enable shallower trees by increasing the uniformity of the key distribution
-* One of the potential drawbacks of tries is that they grow in depth linearly
-  with the length of the input. At their core, they are a memory-efficient but
-  not necessarily a search-efficient representation. Hash tries partially
-  remedy that situation: they use a hash function to pre-process the value to
-  be stored in the tree and use the bits of the hash to determine the location
-  of a particular value in the tree. The number of bits used at every tree
-  depth determines the fan out factor and the eventual depth of the tree.
-
-The implementation makes use of *array mapping*: instead of storing *n*
+HAMTs implement *array mapping*: instead of reserving space for *n*
 pointers to children in each internal node, the parent node stores a bitmap
 that indicates which children are present and the actual node only allocates
-the memory required to refer to its children. This simultaneously makes the
+the memory required to refer to its children. This is an important optimization
+for graphs with a high branching factor (e.g. *n*=32) that simultaneously makes the
 data structure more memory efficient and cache-friendly.
+
+In the following we will address these three concepts in turn: we first define
+the foundational data structure used to build a tree and introduce the concept
+of an *anchor*. We then dive into hash functions and hash state management
+required to make hashing work for trees of arbitrary depths and in the presence
+of hash collisions. Lastly, we turn to *table management*, introducing a set
+of functions used to create, modify, query and dispose of mapped arrays.
+
+With all these pieces in place, we can then finally implement the insert/update,
+query, and delete functions for non-persistent HAMTs. We will then introduce the
+concept of path copying and close with the implementation of persistent
+insert/update and delete functions for HAMTs.
 
 ### Foundational data structures
 
