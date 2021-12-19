@@ -512,16 +512,28 @@ constrains do not apply, we need to make sure it does not overlap w/ the tagged
 pointer. Since the pointer to the key is used more often, we opt to tag the
 value pointer.
 
-
-
-
-* PS: avoiding mixed type, adding another bitmap mapping and keeping two
-  arrays is a key change in LAMP (double-check this)
-
-
 ### The Anchor
 
-* Anchor view
+`libhamt` uses the concept of an *anchor* to unify tree traversal and
+establish a set of useful invariants.
+
+<p align="center">
+<img src="doc/img/hamt-anchor.png" width="600"></img>
+</p>
+<p class="image-caption"><b>Figure 2:</b> HAMT data structure with anchors.
+</p>
+
+An *anchor* is a `HamtNode` pointer to an internal node `node` where
+`node.ptr` points to the table of children and `node.index` defines the
+structure of the table. Traversing the tree takes us from anchor to anchor and
+all table management functions are defined in terms of anchor modifications.
+
+```c
+#define TABLE(a) a->as.table.ptr
+#define INDEX(a) a->as.table.index
+#define VALUE(a) a->as.kv.value
+#define KEY(a) a->as.kv.key
+```
 
 ## Hashing
 
