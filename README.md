@@ -496,16 +496,27 @@ typedef struct HamtNode {
 } HamtNode;
 ```
 This way, `HamtNode` is (and `as.table.ptr` points to) a union that can be
-interpreted as either an internal or a leaf node. The question remains how to
-distinguish between node types in a way that allows us to create arrays of
-mixed type? One option would be to add an `enum` field as part of `HamtNode`
-that specifies the type. While possible, there is a more memory-efficient
-solution: pointer tagging.
+interpreted as either an internal or a leaf node. We also define the following
+convenience macros:
 
-**Pointer tagging**. Since pointers need to be word-aligned, that leaves the
-lower 3 bits of all pointers on 64-bit architectures set to zero. If we
-carefully mask the actual pointer values when they are used, we can make use of
-these bits to encode the data type.
+```c
+#define TABLE(node) node->as.table.ptr
+#define INDEX(node) node->as.table.index
+#define VALUE(node) node->as.kv.value
+#define KEY(node)   node->as.kv.key
+```
+
+The question remains how to distinguish between node types in a way that
+allows us to create arrays of mixed type? One option would be to add an `enum`
+field as part of `HamtNode` that specifies the type. While possible, there is
+a more memory-efficient solution: pointer tagging.
+
+### Pointer tagging
+
+Since pointers need to be word-aligned, that leaves the lower 3 bits of all
+pointers on 64-bit architectures set to zero. If we carefully mask the actual
+pointer values when they are used, we can make use of these bits to encode the
+data type.
 
 Note the order of the pairs: since index is not a pointer and the bit-fiddling
 constrains do not apply, we need to make sure it does not overlap w/ the tagged
@@ -514,26 +525,18 @@ value pointer.
 
 ### The Anchor
 
-`libhamt` uses the concept of an *anchor* to unify tree traversal and
-establish a set of useful invariants.
+The `libhamt` codebase makes liberal use of the concept of an *anchor*.  An
+*anchor* is a `HamtNode*` pointer to an internal node (i.e.
+`is_value(VALUE(anchor))` evaluates to false). An `anchor` provides access to
+all information relevant to manage the table of child nodes: `INDEX(anchor)`
+returns the bitmap that encodes the array mapping, applying a popcount to the
+bitmap gives the size of the table and indexing is implemented using partial
+popcounts. Table elements can be accessed through
+`TABLE(anchor)[i]`, where `i` must be in the valid range.
 
-<p align="center">
-<img src="doc/img/hamt-anchors.png" width="600"></img>
-</p>
-<p class="image-caption"><b>Figure 2:</b> HAMT data structure with anchors.
-</p>
+### Array mapping
 
-An *anchor* is a `HamtNode` pointer to an internal node `node` where
-`node.ptr` points to the table of children and `node.index` defines the
-structure of the table. Traversing the tree takes us from anchor to anchor and
-all table management functions are defined in terms of anchor modifications.
-
-```c
-#define TABLE(a) a->as.table.ptr
-#define INDEX(a) a->as.table.index
-#define VALUE(a) a->as.kv.value
-#define KEY(a) a->as.kv.key
-```
+TBD
 
 ## Hashing
 
