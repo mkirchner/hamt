@@ -518,7 +518,7 @@ value pointer.
 establish a set of useful invariants.
 
 <p align="center">
-<img src="doc/img/hamt-anchor.png" width="600"></img>
+<img src="doc/img/hamt-anchors.png" width="600"></img>
 </p>
 <p class="image-caption"><b>Figure 2:</b> HAMT data structure with anchors.
 </p>
