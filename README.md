@@ -440,10 +440,12 @@ the location of a particular value in the tree. The number of bits used at
 every tree depth determines the fan out factor and the eventual depth of the
 tree.
 
-<p align="center">
-<img src="doc/img/hamt-hamt.png" width="300"></img>
+<p align="left">
+<p>
+<img src="doc/img/hamt-hamt.png" width="200"></img>
 </p>
 <p class="image-caption"><b>Figure 3:</b>A HAMT.</p>
+</p>
 
 HAMTs implement *array mapping*: instead of reserving space for *n*
 pointers to children in each internal node, the parent node stores a bitmap
