@@ -445,14 +445,13 @@ tree.
 <img src="doc/img/hamt-hamt.png" width="200"></img>
 </p>
 <p class="image-caption"><b>Figure 3:</b>A HAMT.</p>
-</p>
-
 HAMTs implement *array mapping*: instead of reserving space for *n*
 pointers to children in each internal node, the parent node stores a bitmap
 that indicates which children are present and the actual node only allocates
 the memory required to refer to its children. This is an important optimization
 for graphs with a high branching factor (e.g. *n*=32) that simultaneously makes the
 data structure more memory efficient and cache-friendly.
+</p>
 
 In the following we will address these three concepts in turn: we first define
 the foundational data structure used to build a tree and introduce the concept
