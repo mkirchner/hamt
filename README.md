@@ -102,13 +102,15 @@ type `HamtCmpFn` to compare keys, and a pointer to a `HamtAllocator` instance.
 
 
 ```c
+/* The libhamt core data structure is a handle to a hash array-mapped trie */
 typedef struct HamtImpl *HAMT;
+
+/* Function signature definitions for key comparison and hashing */
 typedef int (*HamtCmpFn)(const void *lhs, const void *rhs);
 typedef uint32_t (*HamtKeyHashFn)(const void *key, const size_t gen);
 
-
-HAMT hamt_create(HamtKeyHashFn key_hash, HamtCmpFn key_cmp,
-                 struct HamtAllocator *ator);
+/* API functions for lifecycle management */
+HAMT hamt_create(HamtKeyHashFn key_hash, HamtCmpFn key_cmp, struct HamtAllocator *ator);
 void hamt_delete(HAMT);
 ```
 
@@ -417,9 +419,16 @@ The latter requires a somewhat current Python 3 installation with
 
 ### Introduction
 
+<img src="doc/img/hamt-nary-tree.png" align="left" width="300px"/>
 A hash array mapped trie forms an *n*-ary tree.  Internal and leaf nodes have
 different types: internal nodes point to *n* internal or leaf nodes and leaf
 nodes hold or point to data (i.e. the keys/value pairs).
+<br clear="left"/>
+
+<p align="center">
+<img src="doc/img/hamt-hash-tree.png" width="500"></img>
+</p>
+<p class="image-caption"><b>Figure 1:A hash tree.</b></p>
 
 The tree itself is a *hash tree*: it uses the *hash* of the key interpreted as
 a sequence of bits, to detetermine the location of the leaf node that stores
@@ -430,6 +439,11 @@ the value to be stored in the tree and use the bits of the hash to determine
 the location of a particular value in the tree. The number of bits used at
 every tree depth determines the fan out factor and the eventual depth of the
 tree.
+
+<p align="center">
+<img src="doc/img/hamt-hamt.png" width="300"></img>
+</p>
+<p class="image-caption"><b>Figure 3:</b>A HAMT.</p>
 
 HAMTs implement *array mapping*: instead of reserving space for *n*
 pointers to children in each internal node, the parent node stores a bitmap
