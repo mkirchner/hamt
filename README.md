@@ -419,13 +419,16 @@ The latter requires a somewhat current Python 3 installation with
 
 ### Introduction
 
-<img src="doc/img/hamt-nary-tree.png" align="left" width="300px"/>
+<p align="center">
+<img src="doc/img/hamt-trees.png" width="600"></img>
+</p>
+<p class="image-caption"><b>Figure 1:</b> N-ary tree, hash tree, and
+hash array-mapped trie.</p>
+
 A hash array mapped trie forms an *n*-ary tree.  Internal and leaf nodes have
 different types: internal nodes point to *n* internal or leaf nodes and leaf
 nodes hold or point to data (i.e. the keys/value pairs).
-<br clear="left"/>
 
-<img src="doc/img/hamt-hash-tree.png" align="right" width="500"></img>
 The tree itself is a *hash tree*: it uses the *hash* of the key interpreted as
 a sequence of bits, to detetermine the location of the leaf node that stores
 the key/value pair.  This overcomes one of the potential drawbacks of tries,
@@ -435,17 +438,14 @@ the value to be stored in the tree and use the bits of the hash to determine
 the location of a particular value in the tree. The number of bits used at
 every tree depth determines the fan out factor and the eventual depth of the
 tree.
-<br clear="right"/>
 
 
-<img src="doc/img/hamt-hamt.png" align="left" width="200"></img>
 HAMTs implement *array mapping*: instead of reserving space for *n*
 pointers to children in each internal node, the parent node stores a bitmap
 that indicates which children are present and the actual node only allocates
 the memory required to refer to its children. This is an important optimization
 for graphs with a high branching factor (e.g. *n*=32) that simultaneously makes the
 data structure more memory efficient and cache-friendly.
-<br clear="left"/>
 
 
 In the following we will address these three concepts in turn: we first define
