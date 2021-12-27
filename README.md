@@ -425,11 +425,7 @@ different types: internal nodes point to *n* internal or leaf nodes and leaf
 nodes hold or point to data (i.e. the keys/value pairs).
 <br clear="left"/>
 
-<p align="center">
-<img src="doc/img/hamt-hash-tree.png" width="500"></img>
-</p>
-<p class="image-caption"><b>Figure 1:A hash tree.</b></p>
-
+<img src="doc/img/hamt-hash-tree.png" align="right" width="500"></img>
 The tree itself is a *hash tree*: it uses the *hash* of the key interpreted as
 a sequence of bits, to detetermine the location of the leaf node that stores
 the key/value pair.  This overcomes one of the potential drawbacks of tries,
@@ -439,6 +435,7 @@ the value to be stored in the tree and use the bits of the hash to determine
 the location of a particular value in the tree. The number of bits used at
 every tree depth determines the fan out factor and the eventual depth of the
 tree.
+<br clear="right"/>
 
 <img src="doc/img/hamt-hamt.png" align="left" width="200"></img>
 HAMTs implement *array mapping*: instead of reserving space for *n*
