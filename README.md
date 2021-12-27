@@ -419,11 +419,70 @@ The latter requires a somewhat current Python 3 installation with
 
 ### Introduction
 
+What is the most efficient way to retrieve a value from a collection
+given the value's key?
+
+The most likely practical answer to this question is to "use a *hash table*".
+The answer is reasonable, *hash tables* promise retrieval in 𝝝(1) (i.e.
+amortized constant average time), using O(n) space and they are
+part of practically every standard library, e.g.
+
+* `std::unordered_set` and `std::unordered_map` (and their `*_multiset`
+  cousins) provide hash table implementations for C++ <sup
+  id="ac_hash_table_cpp">[1](#fn_hash_table_cpp)</sup>
+* For C, the [musl libc] implementation provides POSIX `hsearch` facilities,
+  GLib provides a [hash table][glib_hashtable] implementation, and more
+  <sup id="ac_hash_table_c">[2](#fn_hash_table_c)</sup>
+* The Python `dict` implementation [is a hash table][python_dict_pre36]<sup
+  id="ac_hash_table_python">[3](#fn_hash_table_python)</sup>
+  
+Hash tables are part of [every][sedgewick_11_algorithms]
+[introductory][cormen_09_introduction] textbook.
+
+  
+[austern_03_proposal]: http://www.open-std.org/jtc1/sc22/wg21/docs/papers/2003/n1456.html
+
+At a high level hash tables are simple: they occupy a contiguous chunk of
+memory, use a hash function to determine the location of a key/value pair in
+that chunk, 
+
+* classic k/v storage via hash tables; the problem is well-understood, fixed
+  size hash tables, requires collision management, two concepts: open or
+  closed hashing (aka separate chaining and open addressing, respectively);
+  closed hashing becoming less attractive as load factors approach 1, requires
+  tuning.
+* On O(1): *amortized* constant *average* cost
+* A lot of people seem to forget that hash table worst case is O(n).
+
+
+* Immutable data structures but data mutability: copies to the rescue.
+* Efficient persistence requires (a) structural sharing; and (b) GC.
+* O(1) expectation
+* Trees w/ high branching factors: O(log_32(n)) vs O(1), but no O(n) worst
+  case (no resizing required).
+* Trees allow for cost-efficient structural sharing, in particular [path
+  copying][wiki_persistent_structural_sharing].
+
+[cpp_unordered_map_impl]: https://stackoverflow.com/a/31113618
+[glib_hashtable]: https://gitlab.gnome.org/GNOME/glib/-/blob/main/glib/ghash.c
+[musl_libc_hsearch]: https://git.musl-libc.org/cgit/musl/tree/src/search/hsearch.c
+[python_dict_pre36]: https://stackoverflow.com/a/9022835
+[python_dict_impl36]: https://morepypy.blogspot.com/2015/01/faster-more-memory-efficient-and-more.html
+[python_dict_impl36_2]: https://mail.python.org/pipermail/python-dev/2012-December/123028.html
+[python_dictobj]: https://github.com/python/cpython/blob/main/Objects/dictobject.c
+[wiki_persistent_structural_sharing]: https://en.wikipedia.org/wiki/Persistent_data_structure#Techniques_for_preserving_previous_versions
+[cormen_09_introduction]: https://www.amazon.com/Introduction-Algorithms-3rd-MIT-Press/dp/0262033844/ref=zg_bs_491298_1/147-2375898-2942653?pd_rd_i=0262033844&psc=1
+[sedgewick_11_algorithms]: https://www.amazon.com/Algorithms-4th-Robert-Sedgewick/dp/032157351X
+
+One way to understand hash array-mapped tries is to look at them as an
+evolution of n-ary and hash trees (cf. fig. 1). The underlying idea here is
+that a
+
 <p align="center">
 <img src="doc/img/hamt-trees.png" width="600"></img>
 </p>
 <p class="image-caption"><b>Figure 1:</b> N-ary tree, hash tree, and
-hash array-mapped trie.</p>
+hash array-mapped trie. N-ary trees </p>
 
 A hash array mapped trie forms an *n*-ary tree.  Internal and leaf nodes have
 different types: internal nodes point to *n* internal or leaf nodes and leaf
@@ -950,6 +1009,38 @@ the Makefile setup in order to avoid symbol duplication.
 * typing solution (`#define *_TYPE` and `#include` approach?)
 
 # Footnotes
+
+<b id="fn_hash_table_cpp">[1]</b>
+The `std::unordered_*` methods implement open hashing (aka separate chaining),
+with the hash table being an array of buckets, each pointing to the head of a
+linked list. This is a deliberate and reasonable compromise for general use;
+gaining an order of magnitude of speed improvements for specialized use cases
+(e.g. append-only, guaranteed high-quality hash functions) is possible. See
+[this stackoverflow post][cpp_unordered_map_impl] for a summary of the [standard
+proposal][austern_03_proposal].
+[↩](#ac_hash_table_cpp)
+
+<b id="fn_hash_table_c">[2]</b>
+`musl` provides a `hsearch` implementation that uses closed hashing with
+quadratic probing for conflict resolution. The
+[documentation][musl_libc_hsearch] states that they use powers of two for
+table sizing which seems wrong due to the impact on the modulo (table sizes
+should ideally be prime). The GLib `GHashTable` has surprisingly little
+documentation in its implementation details but [appears to be
+using][glib_hashtable] a separate chaining approach similar to the C++
+solution.
+[↩](#ac_hash_table_c)
+  
+<b id="fn_hash_table_python">[3]</b> Python's `dict` implementation uses
+closed hashing (aka open addressing) with pseudo-random probing to mitigate
+the poor hashing properties of standard python `hash()` function for some data
+types (from [here][python_dict_pre36]). Python keeps the load factor below
+0.66; this avoids gradual performance degradation associated w/ high load
+factors in closed hashing but comes at increased memory footprint. The
+[codebase][python_dictobj] was refactored to split the actual data from the
+hash table in 3.6, resulting in better memory efficiency and GC friendliness
+(see [here][python_dict_impl36] and [here][python_dict_impl36_2]).
+[↩](#ac_hash_table_python)
 
 <b id="fn_make">[1]</b> `make` first appeared in 1976, has (in numerous
 incarnations) stood the tests of time and still is the most straightforward
