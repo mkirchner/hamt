@@ -419,43 +419,50 @@ The latter requires a somewhat current Python 3 installation with
 
 ### Introduction
 
-What is the most efficient way to retrieve a value from a collection
-given the value's key?
+*What is the best way to store data if I need to efficiently retrieve a value
+from a collection given the value's key?*
 
-The most likely practical answer to this question is to "use a *hash table*".
-The answer is reasonable, *hash tables* promise retrieval in 𝝝(1) (i.e.
-amortized constant average time), using O(n) space and they are
-part of practically every standard library, e.g.
+A common practical answer to this question is to "use a *hash table*".
+This is reasonable: *hash tables* promise retrieval in amortized
+constant average 𝝝(1) time using linear O(n) space and chances are 
+that the standard library of every languange provides a tried and tested
+version that is readily available, for example
 
 * `std::unordered_set` and `std::unordered_map` (and their `*_multiset`
   cousins) provide hash table implementations for C++ <sup
   id="ac_hash_table_cpp">[1](#fn_hash_table_cpp)</sup>
-* For C, the [musl libc] implementation provides POSIX `hsearch` facilities,
-  GLib provides a [hash table][glib_hashtable] implementation, and more
-  <sup id="ac_hash_table_c">[2](#fn_hash_table_c)</sup>
-* The Python `dict` implementation [is a hash table][python_dict_pre36]<sup
+* For C, the [musl libc] implementation provides POSIX-compliant `hsearch`
+  facilities, GLib provides a [hash table][glib_hashtable] implementation, and
+  more <sup id="ac_hash_table_c">[2](#fn_hash_table_c)</sup>
+* Python provides the `dict` type which [implements a hash
+  table][python_dict_pre36]<sup
   id="ac_hash_table_python">[3](#fn_hash_table_python)</sup>
+* Java has `Hashtable`, `HashMap`, and `HashSet`
+  <sup id="ac_hash_table_java">[3](#fn_hash_table_java)</sup>
+* JavaScript has [`Map`][js_map]
   
 Hash tables are part of [every][sedgewick_11_algorithms]
 [introductory][cormen_09_introduction] textbook.
 
-  
-[austern_03_proposal]: http://www.open-std.org/jtc1/sc22/wg21/docs/papers/2003/n1456.html
+[js_map]: https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Map
+
+* So why bother about another data structure that implements associative
+  arrays?  
 
 At a high level hash tables are simple: they occupy a contiguous chunk of
 memory, use a hash function to determine the location of a key/value pair in
 that chunk, 
 
-* classic k/v storage via hash tables; the problem is well-understood, fixed
-  size hash tables, requires collision management, two concepts: open or
-  closed hashing (aka separate chaining and open addressing, respectively);
-  closed hashing becoming less attractive as load factors approach 1, requires
-  tuning.
 * On O(1): *amortized* constant *average* cost
 * A lot of people seem to forget that hash table worst case is O(n).
 
+* Immutable vs. persistent (perceived immutability)
+
+* Why would we want persistence?
+* Lisp implementation: clousures (i.e. same reason why we want GC)
 
 * Immutable data structures but data mutability: copies to the rescue.
+* Copies are simple but crazy
 * Efficient persistence requires (a) structural sharing; and (b) GC.
 * O(1) expectation
 * Trees w/ high branching factors: O(log_32(n)) vs O(1), but no O(n) worst
@@ -463,6 +470,7 @@ that chunk,
 * Trees allow for cost-efficient structural sharing, in particular [path
   copying][wiki_persistent_structural_sharing].
 
+[austern_03_proposal]: http://www.open-std.org/jtc1/sc22/wg21/docs/papers/2003/n1456.html
 [cpp_unordered_map_impl]: https://stackoverflow.com/a/31113618
 [glib_hashtable]: https://gitlab.gnome.org/GNOME/glib/-/blob/main/glib/ghash.c
 [musl_libc_hsearch]: https://git.musl-libc.org/cgit/musl/tree/src/search/hsearch.c
@@ -1041,6 +1049,18 @@ factors in closed hashing but comes at increased memory footprint. The
 hash table in 3.6, resulting in better memory efficiency and GC friendliness
 (see [here][python_dict_impl36] and [here][python_dict_impl36_2]).
 [↩](#ac_hash_table_python)
+
+<b id="fn_hash_table_java">[4]</b> Java provides `Hashtable<K,V>` and
+`HashMap<K,V>`, both of which implement `Map` and `Collection` interfaces; in
+addition, `Hashtable` is synchronized. The `HashSet` type internally uses a
+`HashMap`. `Hashtable` and `HashMap` implement open hashing
+(separate chaining) with a default load factor of 0.75; The OpenJDK
+implementation of `HashMap` converts
+between linked list and tree representations in the hash buckets, depending on
+bucket size, see [the source][openjdk_java_util_hashmap].
+[↩](#ac_hash_table_java)
+
+[openjdk_java_util_hashmap]: https://github.com/openjdk/jdk17/blob/74007890bb9a3fa3a65683a3f480e399f2b1a0b6/src/java.base/share/classes/java/util/HashMap.java
 
 <b id="fn_make">[1]</b> `make` first appeared in 1976, has (in numerous
 incarnations) stood the tests of time and still is the most straightforward
