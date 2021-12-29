@@ -422,36 +422,33 @@ The latter requires a somewhat current Python 3 installation with
 *What is the best way to store data if I need to efficiently retrieve a value
 from a collection given the value's key?*
 
-A common practical answer to this question is to "use a *hash table*".
-This is reasonable: *hash tables* promise retrieval in amortized
-constant average 𝝝(1) time using linear O(n) space and chances are 
-that the standard library of every languange provides a tried and tested
-version that is readily available, for example
+A common and practical answer to this question is to "use a *hash table*".
+This is good advice. *Hash tables* provide insert, modification, and retrieval
+in amortized constant average time, using space linear in the number of
+elements they store. Chances are that the standard library of the languange at
+hand contains a readily available, tried and tested implementation.
 
-* `std::unordered_set` and `std::unordered_map` (and their `*_multiset`
-  cousins) provide hash table implementations for C++ <sup
-  id="ac_hash_table_cpp">[1](#fn_hash_table_cpp)</sup>
-* For C, the [musl libc] implementation provides POSIX-compliant `hsearch`
-  facilities, GLib provides a [hash table][glib_hashtable] implementation, and
-  more <sup id="ac_hash_table_c">[2](#fn_hash_table_c)</sup>
-* Python provides the `dict` type which [implements a hash
-  table][python_dict_pre36]<sup
-  id="ac_hash_table_python">[3](#fn_hash_table_python)</sup>
-* Java has `Hashtable`, `HashMap`, and `HashSet`
-  <sup id="ac_hash_table_java">[3](#fn_hash_table_java)</sup>
-* JavaScript has [`Map`][js_map]
-  
-Hash tables are part of [every][sedgewick_11_algorithms]
-[introductory][cormen_09_introduction] textbook.
+For example, `std::unordered_set` and `std::unordered_map` (and their
+`*_multiset` cousins) are hash table implementations for C++ <sup
+id="ac_hash_table_cpp">[1](#fn_hash_table_cpp)</sup>; for C, multiple
+[libc][wiki_libc] implementations (e.g. [glibc][wiki_glibc], [musl][musl],
+[BSD libc][wiki_bsd_libc] provide POSIX-compliant `hsearch` facilities, GLib
+and others provide [hash table][glib_hashtable] implementations<sup
+id="ac_hash_table_c">[2](#fn_hash_table_c)</sup>. Python has the `dict` type
+for associative arrays which [is implemented as a hash
+table][python_dict_pre36]<sup
+id="ac_hash_table_python">[3](#fn_hash_table_python)</sup>.  Java has
+`Hashtable`, `HashMap`, and `HashSet` <sup
+id="ac_hash_table_java">[4](#fn_hash_table_java)</sup> and JavaScript has
+[`Map`][js_map]
 
-[js_map]: https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Map
+
+Hash tables have been the subject of intensive research and optimization and 
+are part of [every][sedgewick_11_algorithms]
+[introductory][cormen_09_introduction] CS textbook.
 
 * So why bother about another data structure that implements associative
   arrays?  
-
-At a high level hash tables are simple: they occupy a contiguous chunk of
-memory, use a hash function to determine the location of a key/value pair in
-that chunk, 
 
 * On O(1): *amortized* constant *average* cost
 * A lot of people seem to forget that hash table worst case is O(n).
@@ -470,17 +467,6 @@ that chunk,
 * Trees allow for cost-efficient structural sharing, in particular [path
   copying][wiki_persistent_structural_sharing].
 
-[austern_03_proposal]: http://www.open-std.org/jtc1/sc22/wg21/docs/papers/2003/n1456.html
-[cpp_unordered_map_impl]: https://stackoverflow.com/a/31113618
-[glib_hashtable]: https://gitlab.gnome.org/GNOME/glib/-/blob/main/glib/ghash.c
-[musl_libc_hsearch]: https://git.musl-libc.org/cgit/musl/tree/src/search/hsearch.c
-[python_dict_pre36]: https://stackoverflow.com/a/9022835
-[python_dict_impl36]: https://morepypy.blogspot.com/2015/01/faster-more-memory-efficient-and-more.html
-[python_dict_impl36_2]: https://mail.python.org/pipermail/python-dev/2012-December/123028.html
-[python_dictobj]: https://github.com/python/cpython/blob/main/Objects/dictobject.c
-[wiki_persistent_structural_sharing]: https://en.wikipedia.org/wiki/Persistent_data_structure#Techniques_for_preserving_previous_versions
-[cormen_09_introduction]: https://www.amazon.com/Introduction-Algorithms-3rd-MIT-Press/dp/0262033844/ref=zg_bs_491298_1/147-2375898-2942653?pd_rd_i=0262033844&psc=1
-[sedgewick_11_algorithms]: https://www.amazon.com/Algorithms-4th-Robert-Sedgewick/dp/032157351X
 
 One way to understand hash array-mapped tries is to look at them as an
 evolution of n-ary and hash trees (cf. fig. 1). The underlying idea here is
@@ -982,39 +968,6 @@ functions that would otherwise be inaccessible since they are local to the
 `hamt.c` compilation unit. This requires some care in
 the Makefile setup in order to avoid symbol duplication.
 
-[bagwell_00_ideal]: https://lampwww.epfl.ch/papers/idealhashtrees.pdf
-[boehm_gc]: https://www.hboehm.info/gc/
-[brewer_xx_minunit]: http://www.jera.com/techinfo/jtns/jtn002.html
-[chaelim_hamt]: https://github.com/chaelim/HAMT
-[coyler_15_champ]: https://blog.acolyer.org/2015/11/27/hamt/
-[krukov_09_understanding]: http://blog.higher-order.net/2009/09/08/understanding-clojures-persistenthashmap-deftwice.html
-[stutter]: https://github.com/mkirchner/stutter
-[wiki_associative_array]: https://en.wikipedia.org/wiki/Associative_array
-[wiki_hash_table]: https://en.wikipedia.org/wiki/Hash_table
-[wiki_hash_tree]: https://en.wikipedia.org/wiki/Hash_tree_(persistent_data_structure)
-[wiki_persistent]: https://en.wikipedia.org/wiki/Persistent_data_structure
-[wiki_set_adt]: https://en.wikipedia.org/wiki/Set_(abstract_data_type)
-[wiki_trie]: https://en.wikipedia.org/wiki/Trie
-
-
-## Todo
-
-### Basic implementation
-
-- [ ] testing
-  - [ ] add mem checks, possibly using the Boehm GC?
-- [ ] docs
-
-### Performance testing
-
-- [x] set up perf test tooling
-- [ ] implement perf tests suite
-
-### Someday
-
-* Add more iterator tests
-* support key/value pairs and sets (?)
-* typing solution (`#define *_TYPE` and `#include` approach?)
 
 # Footnotes
 
@@ -1060,16 +1013,34 @@ between linked list and tree representations in the hash buckets, depending on
 bucket size, see [the source][openjdk_java_util_hashmap].
 [↩](#ac_hash_table_java)
 
+
+[austern_03_proposal]: http://www.open-std.org/jtc1/sc22/wg21/docs/papers/2003/n1456.html
+[bagwell_00_ideal]: https://lampwww.epfl.ch/papers/idealhashtrees.pdf
+[boehm_gc]: https://www.hboehm.info/gc/
+[brewer_xx_minunit]: http://www.jera.com/techinfo/jtns/jtn002.html
+[chaelim_hamt]: https://github.com/chaelim/HAMT
+[cormen_09_introduction]: https://www.amazon.com/Introduction-Algorithms-3rd-MIT-Press/dp/0262033844/ref=zg_bs_491298_1/147-2375898-2942653?pd_rd_i=0262033844&psc=1
+[coyler_15_champ]: https://blog.acolyer.org/2015/11/27/hamt/
+[cpp_unordered_map_impl]: https://stackoverflow.com/a/31113618
+[glib_hashtable]: https://gitlab.gnome.org/GNOME/glib/-/blob/main/glib/ghash.c
+[js_map]: https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Map
+[krukov_09_understanding]: http://blog.higher-order.net/2009/09/08/understanding-clojures-persistenthashmap-deftwice.html
+[musl]: https://www.musl-libc.org
+[musl_libc_hsearch]: https://git.musl-libc.org/cgit/musl/tree/src/search/hsearch.c
 [openjdk_java_util_hashmap]: https://github.com/openjdk/jdk17/blob/74007890bb9a3fa3a65683a3f480e399f2b1a0b6/src/java.base/share/classes/java/util/HashMap.java
-
-<b id="fn_make">[1]</b> `make` first appeared in 1976, has (in numerous
-incarnations) stood the tests of time and still is the most straightforward
-approach for portable build specifications in small projects (and some would
-argue in large ones, too).  [↩](#ac_make)
-
-<b id="fn_void">[2]</b> At the expense of type safety and the ability to
-perform any kind of static checking. There are alternate, more type-safe
-solutions based on preprocessor-controlled code duplication for multiple types.
-[↩](#ac_void)
-
-
+[python_dict_impl36]: https://morepypy.blogspot.com/2015/01/faster-more-memory-efficient-and-more.html
+[python_dict_impl36_2]: https://mail.python.org/pipermail/python-dev/2012-December/123028.html
+[python_dict_pre36]: https://stackoverflow.com/a/9022835
+[python_dictobj]: https://github.com/python/cpython/blob/main/Objects/dictobject.c
+[sedgewick_11_algorithms]: https://www.amazon.com/Algorithms-4th-Robert-Sedgewick/dp/032157351X
+[stutter]: https://github.com/mkirchner/stutter
+[wiki_associative_array]: https://en.wikipedia.org/wiki/Associative_array
+[wiki_hash_table]: https://en.wikipedia.org/wiki/Hash_table
+[wiki_hash_tree]: https://en.wikipedia.org/wiki/Hash_tree_(persistent_data_structure)
+[wiki_persistent]: https://en.wikipedia.org/wiki/Persistent_data_structure
+[wiki_persistent_structural_sharing]: https://en.wikipedia.org/wiki/Persistent_data_structure#Techniques_for_preserving_previous_versions
+[wiki_set_adt]: https://en.wikipedia.org/wiki/Set_(abstract_data_type)
+[wiki_trie]: https://en.wikipedia.org/wiki/Trie
+[wiki_libc]: https://en.wikipedia.org/wiki/C_standard_library
+[wiki_glibc]: https://en.wikipedia.org/wiki/Glibc
+[wiki_bsd_libc]:https://en.wikipedia.org/wiki/C_standard_library#BSD_libc
