@@ -425,14 +425,18 @@ from a collection given the value's key?*
 A common and practical answer to this question is to "use a *hash table*".
 This is good advice. *Hash tables* provide insert, modification, and retrieval
 in amortized constant average time, using space linear in the number of
-elements they store. Chances are that the standard library of the languange at
-hand contains a readily available, tried and tested implementation.
+elements they store.  Hash tables have been the subject of intensive research
+and optimization and are part of [every][sedgewick_11_algorithms]
+[introductory][cormen_09_introduction] CS textbook.  Chances are that the
+standard library of the languange at hand contains a readily available, tried
+and tested implementation.
 
 For example, `std::unordered_set` and `std::unordered_map` (and their
 `*_multiset` cousins) are hash table implementations for C++ <sup
 id="ac_hash_table_cpp">[1](#fn_hash_table_cpp)</sup>; for C, multiple
 [libc][wiki_libc] implementations (e.g. [glibc][wiki_glibc], [musl][musl],
-[BSD libc][wiki_bsd_libc] provide POSIX-compliant `hsearch` facilities, GLib
+[BSD libc][wiki_bsd_libc]) provide POSIX-compliant `hsearch` facilities,
+GNOME's [GLib][wiki_glib]
 and others provide [hash table][glib_hashtable] implementations<sup
 id="ac_hash_table_c">[2](#fn_hash_table_c)</sup>. Python has the `dict` type
 for associative arrays which [is implemented as a hash
@@ -440,15 +444,25 @@ table][python_dict_pre36]<sup
 id="ac_hash_table_python">[3](#fn_hash_table_python)</sup>.  Java has
 `Hashtable`, `HashMap`, and `HashSet` <sup
 id="ac_hash_table_java">[4](#fn_hash_table_java)</sup> and JavaScript has
-[`Map`][js_map]
+[`Map`][js_map].
+
+[wiki_glib]: https://en.wikipedia.org/wiki/GLib
 
 
-Hash tables have been the subject of intensive research and optimization and 
-are part of [every][sedgewick_11_algorithms]
-[introductory][cormen_09_introduction] CS textbook.
+So why bother about another data structure that implements associative
+arrays? Because all the implementations above are ephemeral data structures.
+Implementing efficient persistent data structures requires a different
+approach.
 
-* So why bother about another data structure that implements associative
-  arrays?  
+Efficient persistence methods make heavy use of structural sharing to manage
+space complexity; at the same time they need to provide fast access, hence
+trees w/ high branching factors.
+
+Persistence: the property of a datastructure to always preserve the previous
+version of itself under modification
+? Immutability: a technique to implement a persistence contract
+
+
 
 * On O(1): *amortized* constant *average* cost
 * A lot of people seem to forget that hash table worst case is O(n).
