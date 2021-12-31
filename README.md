@@ -419,19 +419,17 @@ The latter requires a somewhat current Python 3 installation with
 
 ### Introduction
 
-*What is the best way to store data if I need to efficiently retrieve a value
-from a collection given the value's key?*
-
-A common and practical answer to this question is to "use a *hash table*".
-This is good advice. *Hash tables* provide insert, modification, and retrieval
-in amortized constant average time, using space linear in the number of
-elements they store.  Hash tables have been the subject of intensive research
-and optimization and are part of [every][sedgewick_11_algorithms]
+**Hash tables.** A common and practical answer to efficient value retrieval
+from a collection given a key is to "use a *hash table*".  This is good
+advice. *Hash tables* provide insert, modification, and retrieval in amortized
+constant average time, using space linear in the number of elements they
+store.  Hash tables have been the subject of intensive research and
+optimization and are part of [every][sedgewick_11_algorithms]
 [introductory][cormen_09_introduction] CS textbook.  Chances are that the
 standard library of the languange at hand contains a readily available, tried
 and tested implementation.
 
-For example, `std::unordered_set` and `std::unordered_map` (and their
+For instance, `std::unordered_set` and `std::unordered_map` (and their
 `*_multiset` cousins) are hash table implementations for C++ <sup
 id="ac_hash_table_cpp">[1](#fn_hash_table_cpp)</sup>; for C, multiple
 [libc][wiki_libc] implementations (e.g. [glibc][wiki_glibc], [musl][musl],
@@ -446,23 +444,34 @@ id="ac_hash_table_python">[3](#fn_hash_table_python)</sup>.  Java has
 id="ac_hash_table_java">[4](#fn_hash_table_java)</sup> and JavaScript has
 [`Map`][js_map].
 
-[wiki_glib]: https://en.wikipedia.org/wiki/GLib
+While mature and production-ready, and irrespective of any particular conflict
+resolution and capacity maintenance strategies, classical hash table
+implementations do not provide support for *persistence* (in the sense of
+*persistent* data structures, not persistent storage). They are a
+place-oriented solution to associative storage and make destructive
+modificantions in the data structure when the data changes.
 
+Persistent associative containers require a different approach.
 
-So why bother about another data structure that implements associative
-arrays? Because all the implementations above are ephemeral data structures.
-Implementing efficient persistent data structures requires a different
-approach.
+**Persistent data structures.** *(Full) persistence* is the property of a data
+structure to always preserve (all) previous versions if itself under
+modification. The property is related to immutability: from the perspective of
+the client, every update yields a new copy, making instances practically
+immutable. This is a huge conceptual change: if data structures are immutable,
+functions using these data structures are pure (i.e. side effect-free),
+providing a better, safer programming environment.
+
+The catch is obviusly that the persistence/immutability properties are only
+interesting if the data structures that implement them (i.e. the persistent hash table)
+have performance characteristics that are comparable to those of classical,
+mutable solutions.
 
 Efficient persistence methods make heavy use of structural sharing to manage
 space complexity; at the same time they need to provide fast access, hence
 trees w/ high branching factors.
 
-Persistence: the property of a datastructure to always preserve the previous
-version of itself under modification
-? Immutability: a technique to implement a persistence contract
-
-
+**Making hash tables persistent, efficiently.** Bla.
+cite Bagwell
 
 * On O(1): *amortized* constant *average* cost
 * A lot of people seem to forget that hash table worst case is O(n).
@@ -1058,3 +1067,4 @@ bucket size, see [the source][openjdk_java_util_hashmap].
 [wiki_libc]: https://en.wikipedia.org/wiki/C_standard_library
 [wiki_glibc]: https://en.wikipedia.org/wiki/Glibc
 [wiki_bsd_libc]:https://en.wikipedia.org/wiki/C_standard_library#BSD_libc
+[wiki_glib]: https://en.wikipedia.org/wiki/GLib
