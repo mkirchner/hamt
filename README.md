@@ -468,20 +468,34 @@ synchronization (see e.g. Rich Hickey's presentations on [*The Value of
 Values*][hickey_value_of_values] and [*Are We There
 Yet?*][hickey_are_we_there_yet]).
 
-The catch is that classical hash tables set a high bar in terms of
-time and space performance characteristics, and persistence solutions need to
+The catch is that classical hash tables set a high bar in terms of time and
+space performance characteristics, and persistent data structures need to
 approximate that bar.
 
-**Efficient persistent associative data structures.** The key challenge for
-efficient persistent data structures is to manage space complexity: if every
-modification returns a copy of the data structure, space efficiency is key.
+**Efficient persistence.** Persistent associative data structures need to
+represent key-value pairs in memory in a way that satisfies two requirements:
+they need to be memory-efficient to minimize the overhead introduced by value
+semantice (i.e.  returning copies as opposed to modified originals), and they
+need to allow for fast access to minimize the gap to classical hash tables.
+
+At the conceptual level, this calls for trees with *structural sharing* and
+*managed memory* (i.e. *garbage collection*) to address the memory
+constraints, and *balancing* and *large branching factors* (e.g. *n*=32) to
+address access performance.
 
 
 
-For that reason, persistent data structures make heavy use of structural sharing to manage
-space complexity; at the same time they need to provide fast access, hence
-trees w/ high branching factors.
+Strategies for persistence:
+multiple techiques (copy-on-write, fat nodes, path copying), with path copying
+clearly being a simple and general strategy.
+There are better but much more complex approaches [that combine the different
+techniques][driscoll_86_making].
+* Trees allow for cost-efficient structural sharing, in particular [path
+  copying][wiki_persistent_structural_sharing].
+* Trees w/ high branching factors: O(log_32(n)) vs O(1), but no O(n) worst
+  case (no resizing required).
 
+[driscoll_86_making]: https://www.cs.cmu.edu/~sleator/papers/another-persistence.pdf
 [hickey_value_of_values]: https://github.com/matthiasn/talk-transcripts/blob/master/Hickey_Rich/ValueOfValues.md
 [hickey_are_we_there_yet]: https://github.com/matthiasn/talk-transcripts/blob/master/Hickey_Rich/AreWeThereYet.md
 
@@ -491,33 +505,6 @@ trees w/ high branching factors.
 [wiki_referential_transparency]: https://en.wikipedia.org/wiki/Referential_transparency
 
 
-**Making hash tables persistent, efficiently.** Bla.
-cite Bagwell
-
-* On O(1): *amortized* constant *average* cost
-* A lot of people seem to forget that hash table worst case is O(n).
-
-* Immutable vs. persistent (perceived immutability)
-
-* Why would we want persistence?
-* Lisp implementation: clousures (i.e. same reason why we want GC)
-
-* Immutable data structures but data mutability: copies to the rescue.
-* Copies are simple but crazy
-* Efficient persistence requires (a) structural sharing; and (b) GC.
-* O(1) expectation
-* Trees w/ high branching factors: O(log_32(n)) vs O(1), but no O(n) worst
-  case (no resizing required).
-* Trees allow for cost-efficient structural sharing, in particular [path
-  copying][wiki_persistent_structural_sharing].
-
-Strategies for persistence:
-multiple techiques (copy-on-write, fat nodes, path copying), with path copying
-clearly being a simple and general strategy.
-There are better but much more complex approaches [that combine the different
-techniques][driscoll_86_making].
-
-[driscoll_86_making]: https://www.cs.cmu.edu/~sleator/papers/another-persistence.pdf
 
 One way to understand hash array-mapped tries is to look at them as an
 evolution of n-ary and hash trees (cf. fig. 1). The underlying idea here is
