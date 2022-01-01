@@ -444,31 +444,52 @@ id="ac_hash_table_python">[3](#fn_hash_table_python)</sup>.  Java has
 id="ac_hash_table_java">[4](#fn_hash_table_java)</sup> and JavaScript has
 [`Map`][js_map].
 
-While mature and production-ready, and irrespective of any particular conflict
-resolution and capacity maintenance strategies, classical hash table
-implementations do not provide support for *persistence* (in the sense of
-*persistent* data structures, not persistent storage). They are a
-place-oriented solution to associative storage and make destructive
-modificantions in the data structure when the data changes.
+One property of the classical hash table implementations is that they do not
+provide support for *persistence* (in the sense of [persistent data
+structures][wiki_persistent], not persistent storage). They are a
+[place-oriented][hickey_value_of_values] solution to associative storage and
+make destructive modifications to the data structure when the data changes (
+note that this is independent of any particular conflict resolution and
+capacity maintenance strategies).
 
 Persistent associative containers require a different approach.
 
 **Persistent data structures.** *(Full) persistence* is the property of a data
 structure to always preserve (all) previous versions if itself under
-modification. The property is related to immutability: from the perspective of
-the client, every update yields a new copy, making instances practically
-immutable. This is a huge conceptual change: if data structures are immutable,
-functions using these data structures are pure (i.e. side effect-free),
-providing a better, safer programming environment.
+modification. The property is related to
+[immutability][wiki_immutable_object]: from the perspective of the client,
+every update yields a new copy, making instances practically immutable. This
+is a huge conceptual change: if data structures are immutable, functions using
+these data structures are pure (i.e. side effect-free). That in turn enables
+[value semantics][wiki_value_semantics], [referential
+transparency][wiki_referential_transparency], and, consequently, substantial
+reduction in programming complexity when dealing with paralellism and
+synchronization (see e.g. Rich Hickey's presentations on [*The Value of
+Values*][hickey_value_of_values] and [*Are We There
+Yet?*][hickey_are_we_there_yet]).
 
-The catch is obviusly that the persistence/immutability properties are only
-interesting if the data structures that implement them (i.e. the persistent hash table)
-have performance characteristics that are comparable to those of classical,
-mutable solutions.
+The catch is that classical hash tables set a high bar in terms of
+time and space performance characteristics, and persistence solutions need to
+approximate that bar.
 
-Efficient persistence methods make heavy use of structural sharing to manage
+**Efficient persistent associative data structures.** The key challenge for
+efficient persistent data structures is to manage space complexity: if every
+modification returns a copy of the data structure, space efficiency is key.
+
+
+
+For that reason, persistent data structures make heavy use of structural sharing to manage
 space complexity; at the same time they need to provide fast access, hence
 trees w/ high branching factors.
+
+[hickey_value_of_values]: https://github.com/matthiasn/talk-transcripts/blob/master/Hickey_Rich/ValueOfValues.md
+[hickey_are_we_there_yet]: https://github.com/matthiasn/talk-transcripts/blob/master/Hickey_Rich/AreWeThereYet.md
+
+[wiki_persistent_data_structure]: https://en.wikipedia.org/wiki/Persistent_data_structure 
+[wiki_immutable_object]: https://en.wikipedia.org/wiki/Immutable_object
+[wiki_value_semantics]: https://en.wikipedia.org/wiki/Value_semantics
+[wiki_referential_transparency]: https://en.wikipedia.org/wiki/Referential_transparency
+
 
 **Making hash tables persistent, efficiently.** Bla.
 cite Bagwell
@@ -490,6 +511,13 @@ cite Bagwell
 * Trees allow for cost-efficient structural sharing, in particular [path
   copying][wiki_persistent_structural_sharing].
 
+Strategies for persistence:
+multiple techiques (copy-on-write, fat nodes, path copying), with path copying
+clearly being a simple and general strategy.
+There are better but much more complex approaches [that combine the different
+techniques][driscoll_86_making].
+
+[driscoll_86_making]: https://www.cs.cmu.edu/~sleator/papers/another-persistence.pdf
 
 One way to understand hash array-mapped tries is to look at them as an
 evolution of n-ary and hash trees (cf. fig. 1). The underlying idea here is
