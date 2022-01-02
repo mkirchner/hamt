@@ -475,36 +475,33 @@ approximate that bar.
 **Efficient persistence.** Persistent associative data structures need to
 represent key-value pairs in memory in a way that satisfies two requirements:
 they need to be memory-efficient to minimize the overhead introduced by value
-semantice (i.e.  returning copies as opposed to modified originals), and they
+semantics (i.e.  returning copies as opposed to modified originals), and they
 need to allow for fast access to minimize the gap to classical hash tables.
 
-At the conceptual level, this calls for trees with *structural sharing* and
-*managed memory* (i.e. *garbage collection*) to address the memory
-constraints, and *balancing* and *large branching factors* (e.g. *n*=32) to
-address access performance.
+At the conceptual level, this calls for trees with [*structural
+sharing*][wiki_structural_sharing] and *managed memory* to address the memory
+constraints. The trees also need to be *balanced* and support *large branching
+factors* (e.g. *n*=32) to address access performance.
 
+There are multiple [techiques for structural
+sharing][wiki_persistent_data_structure] (copy-on-write, fat nodes, path
+copying, [complex combinations of the previous three][driscoll_86_making]),
+with [path copying][wiki_persistent_structural_sharing] being a simple and
+general strategy.
+Trees w/ high branching factors: O(log_32(n)) vs O(1), but no O(n) worst
+case (no resizing required).
 
-
-Strategies for persistence:
-multiple techiques (copy-on-write, fat nodes, path copying), with path copying
-clearly being a simple and general strategy.
-There are better but much more complex approaches [that combine the different
-techniques][driscoll_86_making].
-* Trees allow for cost-efficient structural sharing, in particular [path
-  copying][wiki_persistent_structural_sharing].
-* Trees w/ high branching factors: O(log_32(n)) vs O(1), but no O(n) worst
-  case (no resizing required).
-
+[wiki_structural_sharing]: https://en.wikipedia.org/wiki/Persistent_data_structure#Trees
 [driscoll_86_making]: https://www.cs.cmu.edu/~sleator/papers/another-persistence.pdf
 [hickey_value_of_values]: https://github.com/matthiasn/talk-transcripts/blob/master/Hickey_Rich/ValueOfValues.md
 [hickey_are_we_there_yet]: https://github.com/matthiasn/talk-transcripts/blob/master/Hickey_Rich/AreWeThereYet.md
-
 [wiki_persistent_data_structure]: https://en.wikipedia.org/wiki/Persistent_data_structure 
 [wiki_immutable_object]: https://en.wikipedia.org/wiki/Immutable_object
 [wiki_value_semantics]: https://en.wikipedia.org/wiki/Value_semantics
 [wiki_referential_transparency]: https://en.wikipedia.org/wiki/Referential_transparency
 
 
+### Hash Array-Mapped Tries
 
 One way to understand hash array-mapped tries is to look at them as an
 evolution of n-ary and hash trees (cf. fig. 1). The underlying idea here is
