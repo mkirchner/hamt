@@ -529,6 +529,13 @@ the memory required to refer to its children. This is an important optimization
 for graphs with a high branching factor (e.g. *n*=32) that simultaneously makes the
 data structure more memory efficient and cache-friendly.
 
+There are multiple [techiques for structural
+sharing][wiki_persistent_data_structure] (copy-on-write, fat nodes, path
+copying, [complex combinations of the previous three][driscoll_86_making]),
+with [path copying][wiki_persistent_structural_sharing] being a simple and
+general strategy.
+
+### Implementation strategy
 
 In the following we will address these three concepts in turn: we first define
 the foundational data structure used to build a tree and introduce the concept
@@ -536,19 +543,11 @@ of an *anchor*. We then dive into hash functions and hash state management
 required to make hashing work for trees of arbitrary depths and in the presence
 of hash collisions. Lastly, we turn to *table management*, introducing a set
 of functions used to create, modify, query and dispose of mapped arrays.
-
-With all these pieces in place, we can then finally implement the insert/update,
-query, and delete functions for non-persistent HAMTs. We will then introduce the
+With these pieces in place, we are ready to implement the insert/update,
+query, and delete functions for non-persistent HAMTs. And lastly, we will then introduce the
 concept of path copying and close with the implementation of persistent
 insert/update and delete functions for HAMTs.
 
-There are multiple [techiques for structural
-sharing][wiki_persistent_data_structure] (copy-on-write, fat nodes, path
-copying, [complex combinations of the previous three][driscoll_86_making]),
-with [path copying][wiki_persistent_structural_sharing] being a simple and
-general strategy.
-Trees w/ high branching factors: O(log_32(n)) vs O(1), but no O(n) worst
-case (no resizing required).
 
 ### Foundational data structures
 
