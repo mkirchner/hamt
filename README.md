@@ -478,14 +478,11 @@ they need to be memory-efficient to minimize the overhead introduced by value
 semantics (i.e.  returning copies as opposed to modified originals), and they
 need to allow for fast access to minimize the gap to classical hash tables.
 
-A data structure that can successfully address these requirements are balanced
-trees with a large branching factor (for speed) and structural sharing 
-
 Conceptually, efficient versioning calls for a [*structural
-sharing*][wiki_structural_sharing] strategy. Efficient access under structural
-sharing suggests a tree structure, preferably balanced and with large
-branching factors (both to limit tree depth and maintain good average
-performance guarantees).
+sharing*][wiki_structural_sharing] strategy (to manage memory impact).
+Efficient access under structural sharing suggests a tree structure,
+preferably balanced and with large branching factors (both to limit tree depth
+and maintain good average performance guarantees).
 
 That, in essence, is exactly what persistent hash array-mapped tries
 provide in practice.
