@@ -491,7 +491,7 @@ practical implementation of such a data structure.
 ### Persistent Hash Array-Mapped Tries
 
 One way to understand hash array-mapped tries is to look at them as an
-evolution of n-ary and hash trees (cf. fig. 1).
+evolution of n-ary and hash trees (Fig. 1).
 
 <p align="center">
 <img src="doc/img/hamt-trees.png" width="600"></img>
