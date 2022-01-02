@@ -491,20 +491,20 @@ practical implementation of such a data structure.
 ### Persistent Hash Array-Mapped Tries
 
 One way to understand hash array-mapped tries is to look at them as an
-evolution of n-ary and hash trees (cf. fig. 1). The underlying idea here is
-that a
+evolution of n-ary and hash trees (cf. fig. 1).
 
 <p align="center">
 <img src="doc/img/hamt-trees.png" width="600"></img>
 </p>
 <p class="image-caption"><b>Figure 1:</b> N-ary tree, hash tree, and
-hash array-mapped trie. N-ary trees </p>
+hash array-mapped trie.</p>
 
 A hash array mapped trie forms an *n*-ary tree.  Internal and leaf nodes have
 different types: internal nodes point to *n* internal or leaf nodes and leaf
 nodes hold or point to data (i.e. the keys/value pairs). The challenge with
-vanilla *n*-ary trees is that they are not balanced and their performance
-characteristics can easily degrade to O(n) depending on the input sequence.
+vanilla *k*-ary trees is that they are not balanced and their performance
+characteristics can easily degrade from O(log<sub>k</sub> n) to O(n) depending
+on the sequence of the input.
 
 For that reason, a HAMT is a *hash tree*: it uses the *hash* of the key
 interpreted as a sequence of bits, to detetermine the location of the leaf
