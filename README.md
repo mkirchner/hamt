@@ -478,18 +478,18 @@ they need to be memory-efficient to minimize the overhead introduced by value
 semantics (i.e.  returning copies as opposed to modified originals), and they
 need to allow for fast access to minimize the gap to classical hash tables.
 
-At the conceptual level, this calls for trees with [*structural
-sharing*][wiki_structural_sharing] and *managed memory* to address the memory
-constraints. The trees also need to be *balanced* and support *large branching
-factors* (e.g. *n*=32) to address access performance.
+A data structure that can successfully address these requirements are balanced
+trees with a large branching factor (for speed) and structural sharing 
 
-There are multiple [techiques for structural
-sharing][wiki_persistent_data_structure] (copy-on-write, fat nodes, path
-copying, [complex combinations of the previous three][driscoll_86_making]),
-with [path copying][wiki_persistent_structural_sharing] being a simple and
-general strategy.
-Trees w/ high branching factors: O(log_32(n)) vs O(1), but no O(n) worst
-case (no resizing required).
+Conceptually, efficient versioning calls for a [*structural
+sharing*][wiki_structural_sharing] strategy. Efficient access under structural
+sharing suggests a tree structure, preferably balanced and with large
+branching factors (both to limit tree depth and maintain good average
+performance guarantees).
+
+That, in essence, is exactly what persistent hash array-mapped tries
+provide in practice.
+
 
 [wiki_structural_sharing]: https://en.wikipedia.org/wiki/Persistent_data_structure#Trees
 [driscoll_86_making]: https://www.cs.cmu.edu/~sleator/papers/another-persistence.pdf
@@ -547,6 +547,14 @@ With all these pieces in place, we can then finally implement the insert/update,
 query, and delete functions for non-persistent HAMTs. We will then introduce the
 concept of path copying and close with the implementation of persistent
 insert/update and delete functions for HAMTs.
+
+There are multiple [techiques for structural
+sharing][wiki_persistent_data_structure] (copy-on-write, fat nodes, path
+copying, [complex combinations of the previous three][driscoll_86_making]),
+with [path copying][wiki_persistent_structural_sharing] being a simple and
+general strategy.
+Trees w/ high branching factors: O(log_32(n)) vs O(1), but no O(n) worst
+case (no resizing required).
 
 ### Foundational data structures
 
