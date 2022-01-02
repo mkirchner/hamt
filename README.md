@@ -448,8 +448,8 @@ One property of the classical hash table implementations is that they do not
 provide support for *persistence* (in the sense of [persistent data
 structures][wiki_persistent], not persistent storage). They are a
 [place-oriented][hickey_value_of_values] solution to associative storage and
-make destructive modifications to the data structure when the data changes (
-note that this is independent of any particular conflict resolution and
+make destructive modifications to the data structure when the data changes
+(note that this is independent of any particular conflict resolution and
 capacity maintenance strategies).
 
 Persistent associative containers require a different approach.
@@ -502,18 +502,25 @@ hash array-mapped trie. N-ary trees </p>
 
 A hash array mapped trie forms an *n*-ary tree.  Internal and leaf nodes have
 different types: internal nodes point to *n* internal or leaf nodes and leaf
-nodes hold or point to data (i.e. the keys/value pairs).
+nodes hold or point to data (i.e. the keys/value pairs). The challenge with
+vanilla *n*-ary trees is that they are not balanced and their performance
+characteristics can easily degrade to O(n) depending on the input sequence.
 
-The tree itself is a *hash tree*: it uses the *hash* of the key interpreted as
-a sequence of bits, to detetermine the location of the leaf node that stores
-the key/value pair.  This overcomes one of the potential drawbacks of tries,
-namely that they grow in depth linearly with the length of the input.  Hash
-tries partially remedy that situation: they use a hash function to pre-process
-the value to be stored in the tree and use the bits of the hash to determine
-the location of a particular value in the tree. The number of bits used at
-every tree depth determines the fan out factor and the eventual depth of the
-tree.
+For that reason, a HAMT is a *hash tree*: it uses the *hash* of the key
+interpreted as a sequence of bits, to detetermine the location of the leaf
+node that stores the key/value pair. The idea here is to avoid the explicit
+implementation of tree rebalancing (as in e.g. [Red-black
+trees][wiki_red_black_trees], [AVL trees][wiki_avl_trees], or
+[B-trees][wiki_b_trees]) and instead rely on the distributional properties of
+a (good) hash function to place nodes uniformly.  Hash trees use a hash
+function to pre-process the value to be stored in the tree and use the bits of
+the hash to determine the location of a particular value in the tree. The
+number of bits used at every tree depth determines the fan out factor and the
+eventual depth of the tree.
 
+[wiki_avl_trees]: https://en.wikipedia.org/wiki/AVL_tree
+[wiki_red_black_trees]: https://en.wikipedia.org/wiki/Red–black_tree
+[wiki_b_trees]: https://en.wikipedia.org/wiki/B-tree
 
 HAMTs implement *array mapping*: instead of reserving space for *n*
 pointers to children in each internal node, the parent node stores a bitmap
