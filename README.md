@@ -473,32 +473,22 @@ space performance characteristics, and persistent data structures need to
 approximate that bar.
 
 **Efficient persistence.** Persistent associative data structures need to
-represent key-value pairs in memory in a way that satisfies two requirements:
-they need to be memory-efficient to minimize the overhead introduced by value
-semantics (i.e.  returning copies as opposed to modified originals), and they
-need to allow for fast access to minimize the gap to classical hash tables.
+minimize the memory overhead introduced by value
+semantics (i.e. returning copies as opposed to modified originals) and, at
+the same time, provide practically average constant time insert, retrieve and
+delete capabilities to minimize the performance gap to classical hash tables.
 
-Conceptually, efficient versioning calls for a [*structural
-sharing*][wiki_structural_sharing] strategy (to manage memory impact).
-Efficient access under structural sharing suggests a tree structure,
-preferably balanced and with large branching factors (both to limit tree depth
-and maintain good average performance guarantees).
+It turns out that the data structure of choice to tackle these challenges is a
+*tree*. Trees support efficient [*structural
+sharing*][wiki_structural_sharing] strategies for efficient memory management
+and, if they are *balanced* and have *large branching factors*, provide
+O(log<sub>k</sub> N) average performance guarantees.
 
-That, in essence, is exactly what persistent hash array-mapped tries
-provide in practice.
-
-
-[wiki_structural_sharing]: https://en.wikipedia.org/wiki/Persistent_data_structure#Trees
-[driscoll_86_making]: https://www.cs.cmu.edu/~sleator/papers/another-persistence.pdf
-[hickey_value_of_values]: https://github.com/matthiasn/talk-transcripts/blob/master/Hickey_Rich/ValueOfValues.md
-[hickey_are_we_there_yet]: https://github.com/matthiasn/talk-transcripts/blob/master/Hickey_Rich/AreWeThereYet.md
-[wiki_persistent_data_structure]: https://en.wikipedia.org/wiki/Persistent_data_structure 
-[wiki_immutable_object]: https://en.wikipedia.org/wiki/Immutable_object
-[wiki_value_semantics]: https://en.wikipedia.org/wiki/Value_semantics
-[wiki_referential_transparency]: https://en.wikipedia.org/wiki/Referential_transparency
+*Persistent hash array-mapped tries* are, in essence, a sophisticated,
+practical implementation of such a data structure.
 
 
-### Hash Array-Mapped Tries
+### Persistent Hash Array-Mapped Tries
 
 One way to understand hash array-mapped tries is to look at them as an
 evolution of n-ary and hash trees (cf. fig. 1). The underlying idea here is
@@ -1062,7 +1052,10 @@ bucket size, see [the source][openjdk_java_util_hashmap].
 [cormen_09_introduction]: https://www.amazon.com/Introduction-Algorithms-3rd-MIT-Press/dp/0262033844/ref=zg_bs_491298_1/147-2375898-2942653?pd_rd_i=0262033844&psc=1
 [coyler_15_champ]: https://blog.acolyer.org/2015/11/27/hamt/
 [cpp_unordered_map_impl]: https://stackoverflow.com/a/31113618
+[driscoll_86_making]: https://www.cs.cmu.edu/~sleator/papers/another-persistence.pdf
 [glib_hashtable]: https://gitlab.gnome.org/GNOME/glib/-/blob/main/glib/ghash.c
+[hickey_are_we_there_yet]: https://github.com/matthiasn/talk-transcripts/blob/master/Hickey_Rich/AreWeThereYet.md
+[hickey_value_of_values]: https://github.com/matthiasn/talk-transcripts/blob/master/Hickey_Rich/ValueOfValues.md
 [js_map]: https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Map
 [krukov_09_understanding]: http://blog.higher-order.net/2009/09/08/understanding-clojures-persistenthashmap-deftwice.html
 [musl]: https://www.musl-libc.org
@@ -1075,13 +1068,18 @@ bucket size, see [the source][openjdk_java_util_hashmap].
 [sedgewick_11_algorithms]: https://www.amazon.com/Algorithms-4th-Robert-Sedgewick/dp/032157351X
 [stutter]: https://github.com/mkirchner/stutter
 [wiki_associative_array]: https://en.wikipedia.org/wiki/Associative_array
-[wiki_hash_table]: https://en.wikipedia.org/wiki/Hash_table
-[wiki_hash_tree]: https://en.wikipedia.org/wiki/Hash_tree_(persistent_data_structure)
-[wiki_persistent]: https://en.wikipedia.org/wiki/Persistent_data_structure
-[wiki_persistent_structural_sharing]: https://en.wikipedia.org/wiki/Persistent_data_structure#Techniques_for_preserving_previous_versions
-[wiki_set_adt]: https://en.wikipedia.org/wiki/Set_(abstract_data_type)
-[wiki_trie]: https://en.wikipedia.org/wiki/Trie
-[wiki_libc]: https://en.wikipedia.org/wiki/C_standard_library
-[wiki_glibc]: https://en.wikipedia.org/wiki/Glibc
 [wiki_bsd_libc]:https://en.wikipedia.org/wiki/C_standard_library#BSD_libc
 [wiki_glib]: https://en.wikipedia.org/wiki/GLib
+[wiki_glibc]: https://en.wikipedia.org/wiki/Glibc
+[wiki_hash_table]: https://en.wikipedia.org/wiki/Hash_table
+[wiki_hash_tree]: https://en.wikipedia.org/wiki/Hash_tree_(persistent_data_structure)
+[wiki_immutable_object]: https://en.wikipedia.org/wiki/Immutable_object
+[wiki_libc]: https://en.wikipedia.org/wiki/C_standard_library
+[wiki_persistent]: https://en.wikipedia.org/wiki/Persistent_data_structure
+[wiki_persistent_data_structure]: https://en.wikipedia.org/wiki/Persistent_data_structure 
+[wiki_persistent_structural_sharing]: https://en.wikipedia.org/wiki/Persistent_data_structure#Techniques_for_preserving_previous_versions
+[wiki_referential_transparency]: https://en.wikipedia.org/wiki/Referential_transparency
+[wiki_set_adt]: https://en.wikipedia.org/wiki/Set_(abstract_data_type)
+[wiki_structural_sharing]: https://en.wikipedia.org/wiki/Persistent_data_structure#Trees
+[wiki_trie]: https://en.wikipedia.org/wiki/Trie
+[wiki_value_semantics]: https://en.wikipedia.org/wiki/Value_semantics
