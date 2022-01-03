@@ -506,34 +506,30 @@ vanilla *k*-ary trees is that they are not balanced and their performance
 characteristics can easily degrade from O(log<sub>k</sub> n) to O(n) depending
 on the sequence of the input.
 
-For that reason, a HAMT is a *hash tree*: it uses the *hash* of the key
-interpreted as a sequence of bits, to detetermine the location of the leaf
-node that stores the key/value pair. The idea here is to avoid the explicit
-implementation of tree rebalancing (as in e.g. [Red-black
+For that reason, a HAMT is a [*hash tree*][wiki_hash_tree]: it uses the *hash*
+of the key, interpreted as a sequence of *b*-bit groups, to detetermine the
+location of the leaf node that stores the key/value pair. The group size *b*
+determines the branching factor 2<sup><i>b</i></sup>, i.e. for *b*=5, every
+node can have 2<sup>5</sup>=32 child nodes. Hashing also avoids the need for
+an explicit implementation of tree rebalancing (as in e.g. [Red-black
 trees][wiki_red_black_trees], [AVL trees][wiki_avl_trees], or
-[B-trees][wiki_b_trees]) and instead rely on the distributional properties of
-a (good) hash function to place nodes uniformly.  Hash trees use a hash
-function to pre-process the value to be stored in the tree and use the bits of
-the hash to determine the location of a particular value in the tree. The
-number of bits used at every tree depth determines the fan out factor and the
-eventual depth of the tree.
+[B-trees][wiki_b_trees]) and instead relies on the distributional properties
+of a (good) hash function to place nodes uniformly.
 
-[wiki_avl_trees]: https://en.wikipedia.org/wiki/AVL_tree
-[wiki_red_black_trees]: https://en.wikipedia.org/wiki/Red–black_tree
-[wiki_b_trees]: https://en.wikipedia.org/wiki/B-tree
-
-HAMTs implement *array mapping*: instead of reserving space for *n*
+The HAMT also implements *array mapping*: instead of reserving space for *n*
 pointers to children in each internal node, the parent node stores a bitmap
 that indicates which children are present and the actual node only allocates
-the memory required to refer to its children. This is an important optimization
-for graphs with a high branching factor (e.g. *n*=32) that simultaneously makes the
-data structure more memory efficient and cache-friendly.
+the memory required to refer to its children. This is an important
+optimization that makes trees with a high branching factor more memory
+efficient and cache-friendly.
 
-There are multiple [techiques for structural
-sharing][wiki_persistent_data_structure] (copy-on-write, fat nodes, path
-copying, [complex combinations of the previous three][driscoll_86_making]),
-with [path copying][wiki_persistent_structural_sharing] being a simple and
-general strategy.
+In order to become *persistent*, we need to extend the HAMT to support a
+[structural sharing][wiki_persistent_data_structure] strategy. Common
+techniques are copy-on-write, fat nodes, [path
+copying][wiki_persistent_structural_sharing], and there are [complex
+combinations of the previous three][driscoll_86_making]. Path copying is
+simple, efficient and general and therefore the technique of choice for
+`libhamt`.
 
 ### Implementation strategy
 
@@ -1089,3 +1085,7 @@ bucket size, see [the source][openjdk_java_util_hashmap].
 [wiki_structural_sharing]: https://en.wikipedia.org/wiki/Persistent_data_structure#Trees
 [wiki_trie]: https://en.wikipedia.org/wiki/Trie
 [wiki_value_semantics]: https://en.wikipedia.org/wiki/Value_semantics
+[wiki_avl_trees]: https://en.wikipedia.org/wiki/AVL_tree
+[wiki_red_black_trees]: https://en.wikipedia.org/wiki/Red–black_tree
+[wiki_b_trees]: https://en.wikipedia.org/wiki/B-tree
+
