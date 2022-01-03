@@ -514,7 +514,8 @@ node can have 2<sup>5</sup>=32 child nodes. Hashing also avoids the need for
 an explicit implementation of tree rebalancing (as in e.g. [Red-black
 trees][wiki_red_black_trees], [AVL trees][wiki_avl_trees], or
 [B-trees][wiki_b_trees]) and instead relies on the distributional properties
-of a (good) hash function to place nodes uniformly.
+of a (good) hash function to place nodes uniformly. Hash trees *do* require a
+strategy to deal with *hash exhaustion*, a topic covered below. 
 
 The HAMT also implements *array mapping*: instead of reserving space for *n*
 pointers to children in each internal node, the parent node stores a bitmap
