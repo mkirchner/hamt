@@ -499,14 +499,14 @@ evolution of n-ary and hash trees (Fig. 1).
 <p class="image-caption"><b>Figure 1:</b> N-ary tree, hash tree, and
 hash array-mapped trie.</p>
 
-A hash array mapped trie forms an *n*-ary tree (Ⓐ.)  Internal and leaf nodes have
+A hash array mapped trie forms an *n*-ary tree Ⓐ.  Internal and leaf nodes have
 different types: internal nodes point to *n* internal or leaf nodes and leaf
 nodes hold or point to data (i.e. the keys/value pairs). The challenge with
 vanilla *k*-ary trees is that they are not balanced and their performance
 characteristics can easily degrade from O(log<sub>k</sub> n) to O(n) depending
 on the sequence of the input.
 
-For that reason, a HAMT is a [*hash tree*][wiki_hash_tree] (Ⓑ): it uses the *hash*
+For that reason, a HAMT is a [*hash tree*][wiki_hash_tree] Ⓑ: it uses the *hash*
 of the key, interpreted as a sequence of *b*-bit groups, to detetermine the
 location of the leaf node that stores the key/value pair. The group size *b*
 determines the branching factor 2<sup><i>b</i></sup>, i.e. for *b*=5, every
@@ -517,7 +517,7 @@ trees][wiki_red_black_trees], [AVL trees][wiki_avl_trees], or
 of a (good) hash function to place nodes uniformly. Hash trees *do* require a
 strategy to deal with *hash exhaustion*, a topic covered below. 
 
-The HAMT also implements *array mapping* (Ⓒ): instead of reserving space for *n*
+The HAMT also implements *array mapping* Ⓒ: instead of reserving space for *n*
 pointers to children in each internal node, the parent node stores a bitmap
 that indicates which children are present and the actual node only allocates
 the memory required to refer to its children. This is an important
