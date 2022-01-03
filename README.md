@@ -534,16 +534,16 @@ simple, efficient and general and therefore the technique of choice for
 
 ### Implementation strategy
 
-In the following we will address these three concepts in turn: we first define
-the foundational data structure used to build a tree and introduce the concept
-of an *anchor*. We then dive into hash functions and hash state management
-required to make hashing work for trees of arbitrary depths and in the presence
-of hash collisions. Lastly, we turn to *table management*, introducing a set
-of functions used to create, modify, query and dispose of mapped arrays.
-With these pieces in place, we are ready to implement the insert/update,
-query, and delete functions for non-persistent HAMTs. And lastly, we will then introduce the
-concept of path copying and close with the implementation of persistent
-insert/update and delete functions for HAMTs.
+In the following we will address these concepts in turn: we first define the
+foundational data structure used to build a tree and introduce the concept of
+an *anchor*. We then dive into hash functions and the *hash state management*
+required to make hashing work for trees of arbitrary depths and in the
+presence of hash collisions. Lastly, we turn to *table management*,
+introducing a set of functions used to create, modify, query and dispose of
+mapped arrays.  With these pieces in place, we are ready to implement the
+insert/update, query, and delete functions for non-persistent HAMTs. And
+lastly, we will then introduce the concept of path copying and close with the
+implementation of persistent insert/update and delete functions for HAMTs.
 
 
 ### Foundational data structures
@@ -820,7 +820,6 @@ HamtNode *table_extend(struct HamtAllocator *ator, HamtNode *anchor,
         memcpy(&new_table[pos + 1], &TABLE(anchor)[pos],
                (n_rows - pos) * sizeof(HamtNode));
     }
-    assert(!is_value(VALUE(anchor)) && "URGS");
     table_free(ator, TABLE(anchor), n_rows);
     TABLE(anchor) = new_table;
     INDEX(anchor) |= (1 << index);
@@ -833,11 +832,6 @@ HamtNode *table_extend(struct HamtAllocator *ator, HamtNode *anchor,
 HamtNode *table_shrink(struct HamtAllocator *ator, HamtNode *anchor,
                        size_t n_rows, uint32_t index, uint32_t pos)
 {
-    /* debug assertions */
-    assert(anchor && "Anchor cannot be NULL");
-    assert(!is_value(VALUE(anchor)) &&
-           "Invariant: shrinking a table requires an internal node");
-
     HamtNode *new_table = NULL;
     uint32_t new_index = 0;
     if (n_rows > 0) {
@@ -861,15 +855,7 @@ HamtNode *table_shrink(struct HamtAllocator *ator, HamtNode *anchor,
 HamtNode *table_gather(struct HamtAllocator *ator, HamtNode *anchor,
                        uint32_t pos)
 {
-    /* debug assertions */
-    assert(anchor && "Anchor cannot be NULL");
-    assert(!is_value(VALUE(anchor)) &&
-           "Invariant: gathering a table requires an internal anchor");
-    assert((pos == 0 || pos == 1) && "pos must be 0 or 1");
-
     int n_rows = get_popcount(INDEX(anchor));
-    assert((n_rows == 2 || n_rows == 1) &&
-           "Table must have size 1 or 2 to gather");
     HamtNode *table = TABLE(anchor);
     KEY(anchor) = table[pos].as.kv.key;
     VALUE(anchor) = table[pos].as.kv.value; /* already tagged */
