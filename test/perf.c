@@ -62,6 +62,7 @@ static void perf_load_table(size_t reps)
 
     struct TimeInterval ti_load;
     for (size_t i = 0; i < reps; ++i) {
+        hamt_cache_init(&hamt_allocator_default, 1000000);
         t = hamt_create(my_keyhash_string, my_keycmp_string,
                         &hamt_allocator_default);
         shuffled = words_create_shuffled_refs(words, WORDS_MAX);
@@ -71,11 +72,13 @@ static void perf_load_table(size_t reps)
         }
         timer_stop(&ti_load);
         hamt_delete(t);
+        hamt_cache_destroy();
         words_free_refs(shuffled);
         print_timer(&ti_load, i, "load");
     }
 
     for (size_t i = 0; i < reps; ++i) {
+        hamt_cache_init(&hamt_allocator_default, 1000000);
         t = hamt_create(my_keyhash_string, my_keycmp_string,
                         &hamt_allocator_default);
         shuffled = words_create_shuffled_refs(words, WORDS_MAX);
@@ -85,6 +88,7 @@ static void perf_load_table(size_t reps)
         }
         timer_stop(&ti_load);
         hamt_delete(t);
+        hamt_cache_destroy();
         words_free_refs(shuffled);
         print_timer(&ti_load, i, "load_p");
     }

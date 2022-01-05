@@ -38,4 +38,8 @@ HamtIterator hamt_it_next(HamtIterator it);
 const void *hamt_it_get_key(HamtIterator it);
 const void *hamt_it_get_value(HamtIterator it);
 
+
+void hamt_cache_init(struct HamtAllocator *ator, size_t cachesize);
+void hamt_cache_destroy();
+
 #endif /* HAMT_H */

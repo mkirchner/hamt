@@ -44,7 +44,7 @@ $(BUILD_DIR)/test/test_hamt: $(TEST_OBJS)
 
 perf: $(BUILD_DIR)/test/perf
 	$(BUILD_DIR)/test/perf | tee $(BUILD_DIR)/test/perf.csv
-	python test/perf.py
+	# python test/perf.py
 
 $(BUILD_DIR)/test/perf: $(PERF_OBJS)
 	$(CC) $(PERF_OBJS) -o $@ $(LDFLAGS)

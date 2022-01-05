@@ -124,13 +124,100 @@ static inline bool has_index(const HamtNode *anchor, size_t index)
     return INDEX(anchor) & (1 << index);
 }
 
+/* Table cache */
+typedef struct FreeList
+{
+    size_t capacity;
+    size_t size;
+    HamtNode **ptrs;
+} FreeList;
+
+static bool freelist_initialized = false;
+static FreeList freelist[32];
+
+void table_freelist_print()
+{
+    printf("[");
+    for (size_t i = 0; i < 31; ++i) {
+        printf("%lu(%lu), ", freelist[i].size, freelist[i].capacity);
+    }
+    printf("%lu]\n", freelist[31].size);
+}
+
+void table_freelist_init(struct HamtAllocator *ator, size_t cachesize)
+{
+    static size_t freelist_bucket_capacities[32] = {
+        4, 4, 4,
+        8, 8,
+        16, 16,
+        32, 32,
+        64, 64,
+        128, 128, 128, 128,
+        256, 256, 256, 256, 256, 256, 256, 256, 256,
+        256, 256, 256, 256, 256, 256, 256, 256
+    };
+    /* cache size correction factor (since the reciprocals of the capacities do
+     * not add up to 1 */
+    double size_correction_factor = 0;
+    double total_shares = 0;
+    for (size_t i = 0; i < 32; ++i) {
+        total_shares += 1.0 / freelist_bucket_capacities[i];
+    }
+    size_correction_factor = 1.0 / total_shares;
+
+    for (size_t i = 0; i < 32; ++i) {
+        freelist[i].capacity = (size_t) cachesize * size_correction_factor / freelist_bucket_capacities[i];
+        freelist[i].size = 0;
+        freelist[i].ptrs = mem_alloc(ator, freelist[i].capacity * sizeof(HamtNode*));
+    }
+    freelist_initialized = true;
+    // table_freelist_print();
+}
+
+
+void table_freelist_destroy()
+{
+    // table_freelist_print();
+    for (size_t i = 0; i < 32; ++i) {
+        free(freelist[i].ptrs);
+    }
+    freelist_initialized = false;
+}
+
+void hamt_cache_init(struct HamtAllocator *ator, size_t cachesize)
+{
+    table_freelist_init(ator, cachesize);
+}
+
+void hamt_cache_destroy()
+{
+    table_freelist_destroy();
+}
+
 HamtNode *table_allocate(struct HamtAllocator *ator, size_t size)
 {
+    if (freelist_initialized) {
+        size_t index = size - 1;
+        if (size && freelist[index].size > 0) {
+            size_t pos = freelist[index].size - 1;
+            freelist[index].size--;
+            return freelist[index].ptrs[pos];
+        }
+    }
     return (HamtNode *)mem_alloc(ator, (size * sizeof(HamtNode)));
 }
 
 void table_free(struct HamtAllocator *ator, HamtNode *ptr, size_t size)
 {
+    if (freelist_initialized) {
+        size_t index = size - 1;
+        if (size && ((freelist[index].size + 1) < freelist[index].capacity)) {
+            size_t pos = freelist[index].size;
+            freelist[index].ptrs[pos] = ptr;
+            freelist[index].size++;
+            return;
+        }
+    }
     mem_free(ator, ptr);
 }
 
