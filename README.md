@@ -423,7 +423,7 @@ The latter requires a somewhat current Python 3 installation with
 from a collection given a key is to "use a *hash table*".  This is good
 advice. *Hash tables* provide insert, modification, and retrieval in amortized
 constant average time, using space linear in the number of elements they
-store.  Hash tables have been the subject of intensive research and
+store.  They have been the subject of intensive research and
 optimization and are part of [every][sedgewick_11_algorithms]
 [introductory][cormen_09_introduction] CS textbook.  Chances are that the
 standard library of the languange at hand contains a readily available, tried
@@ -491,46 +491,69 @@ practical implementation of such a data structure.
 ### Persistent Hash Array-Mapped Tries
 
 One way to understand hash array-mapped tries is to look at them as an
-evolution of n-ary and hash trees (Fig. 1).
+evolution of *k*-ary trees (Fig. 1) that follows from a series of real-world
+tradeoffs.
 
 <p align="center">
 <img src="doc/img/hamt-trees.png" width="600"></img>
 </p>
-<p class="image-caption"><b>Figure 1:</b> N-ary tree, hash tree, and
+<p class="image-caption"><b>Figure 1:</b> *k*-ary tree, hash tree, and
 hash array-mapped trie.</p>
 
-A hash array mapped trie forms an *n*-ary tree Ⓐ.  Internal and leaf nodes have
+In classic *k*-ary trees Ⓐ,  Internal and leaf nodes have
 different types: internal nodes point to *n* internal or leaf nodes and leaf
-nodes hold or point to data (i.e. the keys/value pairs). The challenge with
-vanilla *k*-ary trees is that they are not balanced and their performance
-characteristics can easily degrade from O(log<sub>k</sub> n) to O(n) depending
-on the sequence of the input.
+nodes hold or point to data (i.e. the keys/value pairs). In their basic form,
+*n*-ary trees (just like binary trees) are not balanced and their performance
+characteristics can easily degrade from *O(log<sub>k</sub> n)* to *O(n)*
+for degenerate input sequences.
 
-For that reason, a HAMT is a [*hash tree*][wiki_hash_tree] Ⓑ: it uses the *hash*
-of the key, interpreted as a sequence of *b*-bit groups, to detetermine the
-location of the leaf node that stores the key/value pair. The group size *b*
-determines the branching factor 2<sup><i>b</i></sup>, i.e. for *b*=5, every
-node can have 2<sup>5</sup>=32 child nodes. Hashing also avoids the need for
-an explicit implementation of tree rebalancing (as in e.g. [Red-black
+One approach to balanced trees are explicit implementations of
+tree rebalancing (as in e.g. [Red-black
 trees][wiki_red_black_trees], [AVL trees][wiki_avl_trees], or
-[B-trees][wiki_b_trees]) and instead relies on the distributional properties
-of a (good) hash function to place nodes uniformly. Hash trees *do* require a
-strategy to deal with *hash exhaustion*, a topic covered below. 
+[B-trees][wiki_b_trees]).
 
-The HAMT also implements *array mapping* Ⓒ: instead of reserving space for *n*
-pointers to children in each internal node, the parent node stores a bitmap
-that indicates which children are present and the actual node only allocates
-the memory required to refer to its children. This is an important
+Another option is to use a [*hash tree*][wiki_hash_tree] Ⓑ: like the name
+implies, it uses the *hash* of the key, interpreted as a sequence of *b*-bit
+groups, to detetermine the location of the leaf node that stores the key/value
+pair. The group size *b* determines the branching factor 2<sup><i>b</i></sup>,
+i.e. for *b*=5, every node can have 2<sup>5</sup>=32 child nodes.
+Instead of implementing explicit tree rebalancing, hash trees rely on the
+distributional properties of a (good) hash function to place nodes uniformly.
+While this saves some effort for rebalancing, note that hash trees *do*
+require a strategy to deal with *hash exhaustion*, a topic covered below.
+
+The challenge with vanilla hash trees is that they reserve space for *k*
+children in every internal node. If the tree is sparsely populated this will
+cause significant memory overhead and impact performance due to cache misses.
+
+For that reason, HAMTs implement *array mapping* Ⓒ: instead of reserving space
+for *n* pointers to children in each internal node, the parent node stores a
+bitmap that indicates which children are present and the actual node only
+allocates the memory required to refer to its children. This is an important
 optimization that makes trees with a high branching factor more memory
 efficient and cache-friendly.
 
-In order to become *persistent*, we need to extend the HAMT to support a
-[structural sharing][wiki_persistent_data_structure] strategy. Common
+In order to implement a *persistent* map or set, every modification operation
+must return a modified copy and maintain the source data structure. And
+returning actual copies is prohibitively expensive in time and memory.
+
+This, finally, is where HAMTs really shine and the true reason why we build
+them in the first place.
+
+HAMTs are trees and trees are very compatible with
+[structural sharing][wiki_persistent_data_structure] strategies. Common
 techniques are copy-on-write, fat nodes, [path
 copying][wiki_persistent_structural_sharing], and there are [complex
 combinations of the previous three][driscoll_86_making]. Path copying is
 simple, efficient and general and therefore the technique of choice for
-`libhamt`.
+`libhamt`: Instead of returning an actual copy of the tree during an insert,
+update or delete operations, we follow the search path to the item in
+question, maintaining a path copy with all the nodes along the way, make our
+modification along this path and return it to the caller.
+
+Note that enabling persistence *requires* the use of a garbage collection
+strategy. Under stanard `malloc()` memory management, there is no way for
+the HAMT nodes to know how many descendants of a HAMT refer to them.
 
 ### Implementation strategy
 
