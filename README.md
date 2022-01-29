@@ -570,7 +570,7 @@ implementation of persistent insert/update and delete functions for HAMTs.
 
 
 ### Foundational data structures
-
+<!--
 <p align="center">
 <img src="doc/img/hamt-overview.png" width="600"></img>
 </p>
@@ -580,7 +580,7 @@ HAMTs using linked, heap-allocated tables. Table rows hold
 either an index vector and pointer to a subtable or pointers to key and
 value (one pair of key/value pointers illustrated in blue, and implicit to all
 empty table fields).</p>
-
+-->
 `libhamt` implements internal and leaf nodes in two different types called
 `struct table` and `struct kv` respectively. Leaf nodes are straightforward:
 ```c
