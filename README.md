@@ -582,37 +582,44 @@ value (one pair of key/value pointers illustrated in blue, and implicit to all
 empty table fields).</p>
 -->
 
-`libhamt` uses different types to implement internal and leaf nodes. Leaf
-nodes, defined as `struct kv` are very straightforward:
+`libhamt` uses different types to implement internal and leaf nodes.
+
+Leaf nodes contain two fields, called `value` and `key` (the rationale for the
+reverse ordering of the two fields will become evident shortly).
 ```c
 struct {
     void *value;
     void *key;
 } kv;
 ```
-Every leaf contains two members, called `value` and `key` (the rationale
-for the reverse ordering of the two fields will become evident shortly). Both
-members are `void` pointers, supporting arbitrary data types through type
-casting (ignoring other, potentially more type-safe solutions that make heavy use of
-the C preprocessor).
+Both fields are
+defined as `void*` pointers to support referring to arbitrary data types via
+type casting
+<sup id="ac_cpp_virtual_method_table">[5](#fn_cpp_virtual_method_table)</sup>.
 
-Internal nodes need to be able to point to other internal nodes and leaves
-alike, and, when pointing to an internal nodes, they also need a 32-bit
-`index` that keeps track of branch occupancy for the node that `ptr` points
-to.
+`libhamt`'s internal nodes are where the magic happens, based on Bagwell's *[Ideal Hash
+Trees][bagwell_00_ideal]* paper and according to the design principles
+outlined above.
 
+With a branching factor *k*, internal nodes have at most *k* successors but
+can be sparsely populated. To allow for a memory-efficient representation,
+internal nodes have a pointer `ptr` that points to a fixed-size, right-sized
+*array* of pointers to the child nodes and a 32-bit `index` bitmap field that
+keeps track of the size and occupancy of that array.
+Because `index` is a bitmap field, the number of one-bits in `index` yields
+the size of the array that `ptr` points to.
+
+This suggests an initial (incomplete) definition along the following lines:
 ```c
 struct {
-    struct T *ptr;  /* this is not valid C code */
+    struct T *ptr;  /* incomplete */
     uint32_t index;
 } table;
 ```
 
-The struct above uses a placeholder `T` to highlight the remaining open
-question: what should the type of `ptr` be such that it can point to internal
-*and* external nodes?
-
-A common C approach is to wrap the two types into a `union` (and then to wrap
+The specification of `T` must provide the ability for that datatype to point to
+internal and external nodes alike, using only a single pointer type.
+A solution is to wrap the two types into a `union` (and then to wrap
 the `union` into a `typedef` for convenience):
 
 ```c
@@ -630,11 +637,12 @@ typedef struct HamtNode {
 } HamtNode;
 ```
 
-With this structure in place, given a pointer `HamtNode *p` to a `HamtNode`
+With this structure, given a pointer `HamtNode *p` to a `HamtNode`
 instance, `p->as.kv` addresses the leaf node, and `p->as.table` addresses the
-internal node.
+internal node and `p->as.kv.value`, `p->as.kv.key`, `p->as.table.ptr`, and
+`p->as.table.index` provide access to the respective fields.
 
-It also makes sense to define the following convenience macros:
+To maintain sanity, we define the following convenience macros:
 
 ```c
 #define TABLE(node) node->as.table.ptr
@@ -643,24 +651,24 @@ It also makes sense to define the following convenience macros:
 #define KEY(node)   node->as.kv.key
 ```
 
-
-
-The question remains how to distinguish between node types in a way that
-allows us to create arrays of mixed type? One option would be to add an `enum`
-field as part of `HamtNode` that specifies the type. While possible, there is
-a more memory-efficient solution: pointer tagging.
-
 ### Pointer tagging
 
-Since pointers need to be word-aligned, that leaves the lower 3 bits of all
-pointers on 64-bit architectures set to zero. If we carefully mask the actual
-pointer values when they are used, we can make use of these bits to encode the
-data type.
+The definition of `HamtNode` enables the construction of trees with a mix of
+internal and leaf nodes. What the definition does not solve for, though, is
+how to determine if a concrete `HamtNode*` pointer points to an internal or a
+leaf node. One option would be to add a `type` field and to specify an `enum`
+that indicates the type (i.e. `NODE_LEAF` etc.). 
+While possible, that approach would increase the size of the struct by 50% and
+there is a more memory-efficient solution: pointer tagging.
 
-Note the order of the pairs: since index is not a pointer and the bit-fiddling
-constrains do not apply, we need to make sure it does not overlap w/ the tagged
-pointer. Since the pointer to the key is used more often, we opt to tag the
-value pointer.
+Since pointers need to be word-aligned, that leaves the lower 3 bits of all
+pointers on 64-bit architectures always set to zero. It is possible to make
+use of these bits under two conditions: (1) we know we are looking at a
+pointer (the bottom three bits for the integer 1 are zero, too); and (2) we
+carefully mask the bits in question whenever we actually use the pointer
+(since it would point to the wrong location otherwise). The first is not a
+problem since we own the code; the second requires diligence and some helper
+functions:
 
 ```c
 #define HAMT_TAG_MASK 0x3
@@ -669,6 +677,17 @@ value pointer.
 #define untagged(__p) (HamtNode *)((uintptr_t)__p & ~HAMT_TAG_MASK)
 #define is_value(__p) (((uintptr_t)__p & HAMT_TAG_MASK) == HAMT_TAG_VALUE)
 ```
+
+Pointer tagging is the explanation for the ordering of the `value` and `key`
+fields in the `struct kv` struct. The `union` in `HamtNode` states that the
+memory location of the `struct kv` and `struct table` structs overlap. Since
+the `table.index` field is *not* a pointer (and the bottom-three-bits-are-zero
+guarantee does not apply), its storage location cannot be used for pointer
+tagging, leaving the `table.ptr` to the task.  Putting `kv.value` first,
+aligns the value field with `table.ptr`. The reverse order would work, but the
+`kv.key` pointer is dereferenced much more often in the code and so it is more
+convenient to use `kv.value`.
+
 
 ### The Anchor
 
@@ -683,8 +702,21 @@ popcounts. Table elements can be accessed through
 
 ### Array mapping
 
-TBD
+```c
+static int get_popcount(uint32_t n) { return __builtin_popcount(n); }
 
+static int get_pos(uint32_t sparse_index, uint32_t bitmap)
+{
+    return get_popcount(bitmap & ((1 << sparse_index) - 1));
+}
+
+static inline bool has_index(const HamtNode *anchor, size_t index)
+{
+    assert(anchor && "anchor must not be NULL");
+    assert(index < 32 && "index must not be larger than 31");
+    return INDEX(anchor) & (1 << index);
+}
+```
 ## Hashing
 
 * what is a hash function?
@@ -1082,6 +1114,16 @@ implementation of `HashMap` converts
 between linked list and tree representations in the hash buckets, depending on
 bucket size, see [the source][openjdk_java_util_hashmap].
 [↩](#ac_hash_table_java)
+
+<b id="fn_cpp_virtual_method_table">[5]</b>
+There are alternative approaches to enable (somewhat) typesafe templating in
+C, mainly by implementing what basically amounts to virtual method tables
+using the C preprocessor. See e.g. [here][cpp_vmts] for a useful stackoverflow
+summary or [here][c_templating] for a more in-depth treatise.
+[↩](#ac_cpp_virtual_method_table)
+
+[cpp_vmts]: https://stackoverflow.com/questions/10950828/simulation-of-templates-in-c-for-a-queue-data-type/11035347
+[c_templating]: http://blog.pkh.me/p/20-templating-in-c.html
 
 
 [austern_03_proposal]: http://www.open-std.org/jtc1/sc22/wg21/docs/papers/2003/n1456.html
