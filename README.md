@@ -581,24 +581,39 @@ either an index vector and pointer to a subtable or pointers to key and
 value (one pair of key/value pointers illustrated in blue, and implicit to all
 empty table fields).</p>
 -->
-`libhamt` implements internal and leaf nodes in two different types called
-`struct table` and `struct kv` respectively. Leaf nodes are straightforward:
+
+`libhamt` uses different types to implement internal and leaf nodes. Leaf
+nodes, defined as `struct kv` are very straightforward:
 ```c
 struct {
     void *value;
     void *key;
 } kv;
 ```
-They point to a `key` and a `value` and since C does not afford us with
-templating we make use of `void*` pointers to support arbitrary data types
-(foregoing other, potentially more type-safe solutions that make heavy use of
+Every leaf contains two members, called `value` and `key` (the rationale
+for the reverse ordering of the two fields will become evident shortly). Both
+members are `void` pointers, supporting arbitrary data types through type
+casting (ignoring other, potentially more type-safe solutions that make heavy use of
 the C preprocessor).
 
-Internal nodes are a little more complicated: they will need to hold a pointer
-`ptr` that can point to two different types of of nodes, either `struct kv *`
-or `struct table *` and an `index` that keeps track of branch occupancy for
-`ptr`.  The standard C way to enable this is to bring `struct kv` and `struct
-table` into a `union`:
+Internal nodes need to be able to point to other internal nodes and leaves
+alike, and, when pointing to an internal nodes, they also need a 32-bit
+`index` that keeps track of branch occupancy for the node that `ptr` points
+to.
+
+```c
+struct {
+    struct T *ptr;  /* this is not valid C code */
+    uint32_t index;
+} table;
+```
+
+The struct above uses a placeholder `T` to highlight the remaining open
+question: what should the type of `ptr` be such that it can point to internal
+*and* external nodes?
+
+A common C approach is to wrap the two types into a `union` (and then to wrap
+the `union` into a `typedef` for convenience):
 
 ```c
 typedef struct HamtNode {
@@ -614,9 +629,12 @@ typedef struct HamtNode {
     } as;
 } HamtNode;
 ```
-This way, `HamtNode` is (and `as.table.ptr` points to) a union that can be
-interpreted as either an internal or a leaf node. We also define the following
-convenience macros:
+
+With this structure in place, given a pointer `HamtNode *p` to a `HamtNode`
+instance, `p->as.kv` addresses the leaf node, and `p->as.table` addresses the
+internal node.
+
+It also makes sense to define the following convenience macros:
 
 ```c
 #define TABLE(node) node->as.table.ptr
@@ -624,6 +642,8 @@ convenience macros:
 #define VALUE(node) node->as.kv.value
 #define KEY(node)   node->as.kv.key
 ```
+
+
 
 The question remains how to distinguish between node types in a way that
 allows us to create arrays of mixed type? One option would be to add an `enum`
@@ -641,6 +661,14 @@ Note the order of the pairs: since index is not a pointer and the bit-fiddling
 constrains do not apply, we need to make sure it does not overlap w/ the tagged
 pointer. Since the pointer to the key is used more often, we opt to tag the
 value pointer.
+
+```c
+#define HAMT_TAG_MASK 0x3
+#define HAMT_TAG_VALUE 0x1
+#define tagged(__p) (HamtNode *)((uintptr_t)__p | HAMT_TAG_VALUE)
+#define untagged(__p) (HamtNode *)((uintptr_t)__p & ~HAMT_TAG_MASK)
+#define is_value(__p) (((uintptr_t)__p & HAMT_TAG_MASK) == HAMT_TAG_VALUE)
+```
 
 ### The Anchor
 
