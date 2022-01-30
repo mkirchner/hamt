@@ -3,6 +3,10 @@ A hash array-mapped trie (HAMT) implementation in C99. The implementation
 follows Bagwell's 2000 paper[[1]][bagwell_00_ideal], with a focus on clarity
 rather than raw speed.
 
+A HAMT is a data structure that can be used to efficiently implement
+[*persistent*][wiki_persistent_data_structure] associative arrays (aka maps)
+and sets, see the [Introduction](#introduction).
+
 The original motivation for this effort was the desire to understand and
 implement an efficient persistent data structure with structural sharing for
 maps and sets for [my own Lisp implementation][stutter].
