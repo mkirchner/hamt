@@ -604,10 +604,12 @@ outlined above.
 With a branching factor *k*, internal nodes have at most *k* successors but
 can be sparsely populated. To allow for a memory-efficient representation,
 internal nodes have a pointer `ptr` that points to a fixed-size, right-sized
-*array* of pointers to the child nodes and a 32-bit `index` bitmap field that
+*array* of pointers to the child nodes and a *k*-bit `index` bitmap field that
 keeps track of the size and occupancy of that array.
 Because `index` is a bitmap field, the number of one-bits in `index` yields
 the size of the array that `ptr` points to.
+
+`libhamt` uses *k*=32.
 
 This suggests an initial (incomplete) definition along the following lines:
 ```c
