@@ -656,12 +656,13 @@ To maintain sanity, we define the following convenience macros:
 ### Pointer tagging
 
 The definition of `HamtNode` enables the construction of trees with a mix of
-internal and leaf nodes. What the definition does not solve for, though, is
-how to determine if a concrete `HamtNode*` pointer points to an internal or a
-leaf node. One option would be to add a `type` field and to specify an `enum`
-that indicates the type (i.e. `NODE_LEAF` etc.). 
-While possible, that approach would increase the size of the struct by 50% and
-there is a more memory-efficient solution: pointer tagging.
+internal and leaf nodes. What the definition does not provide, is a way to
+determine if a concrete `HamtNode*` pointer points to an internal or a leaf
+node. One solution would be to to specify an `enum` that indicates the type
+(i.e. `NODE_LEAF`, etc.) and to add a `type` field to `struct HamtNode`.  While
+valid, this would also increase the size of the struct by 50% just to maintain
+a single bit of information. Thankfully, there is a more memory-efficient
+solution: pointer tagging.
 
 Since pointers need to be word-aligned, that leaves the lower 3 bits of all
 pointers on 64-bit architectures always set to zero. It is possible to make
@@ -678,6 +679,37 @@ functions:
 #define tagged(__p) (HamtNode *)((uintptr_t)__p | HAMT_TAG_VALUE)
 #define untagged(__p) (HamtNode *)((uintptr_t)__p & ~HAMT_TAG_MASK)
 #define is_value(__p) (((uintptr_t)__p & HAMT_TAG_MASK) == HAMT_TAG_VALUE)
+```
+
+In order to mark a leaf node as such, we set `key` as usual and tag the value
+pointer before assigning it to `value`:
+
+```c
+    p->as.kv.key = key_ptr;
+    p->as.kv.value = tagged(value_ptr);
+```
+
+Given a pointer to a leaf (e.g. a search result), we untag `value` before
+returning it: 
+
+```c
+    ...
+    if (status == SEARCH_SUCCESS) {
+        return untagged(p->as.kv.value);
+    }
+    ...
+```
+
+And, in order to determine what we are looking at, we use `is_value`:
+
+```c
+    if (is_value(p->as.kv.value)) {
+        /* this is a leaf */
+        ...
+    } else {
+        /* this is an internal node */
+        ...
+    }
 ```
 
 Pointer tagging is the explanation for the ordering of the `value` and `key`
