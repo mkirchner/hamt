@@ -657,6 +657,15 @@ To maintain sanity, we define the following convenience macros:
 #define KEY(node)   node->as.kv.key
 ```
 
+<p align="center">
+<img src="doc/img/hamtnode-table.png" width="300"></img>
+</p>
+<p class="image-caption"><b>Figure 2:</b> 
+Memory structure of an internal node. If <code>node</code> is a pointer
+to an internal node, <code>TABLE(node)</code> (or, equivalently, <code>
+node->as.table.ptr</code>) points to the first field of the successor table.
+</p>
+
 ### Pointer tagging
 
 The definition of `HamtNode` enables the construction of trees with a mix of
