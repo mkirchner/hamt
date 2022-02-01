@@ -658,7 +658,7 @@ To maintain sanity, we define the following convenience macros:
 ```
 
 <p align="center">
-<img src="doc/img/hamtnode-table.png" width="300"></img>
+<img src="doc/img/hamtnode-table.png" width="450"></img>
 </p>
 <p class="image-caption"><b>Figure 2:</b> 
 Memory structure of an internal node. If <code>node</code> is a pointer
