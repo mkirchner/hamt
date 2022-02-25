@@ -544,7 +544,7 @@ returning actual copies is prohibitively expensive in time and memory.
 This, finally, is where HAMTs really shine and the true reason why we build
 them in the first place.
 
-HAMTs are trees and trees are very compatible with
+HAMTs are trees and trees are compatible with
 [structural sharing][wiki_persistent_data_structure] strategies. Common
 techniques are copy-on-write, fat nodes, [path
 copying][wiki_persistent_structural_sharing], and there are [complex
@@ -671,10 +671,10 @@ node->as.table.ptr</code>) points to the first field of the successor table.
 The definition of `HamtNode` enables the construction of trees with a mix of
 internal and leaf nodes. What the definition does not provide, is a way to
 determine if a concrete `HamtNode*` pointer points to an internal or a leaf
-node. One solution would be to to specify an `enum` that indicates the type
+node. One solution would be to specify an `enum` that indicates the type
 (i.e. `NODE_LEAF`, etc.) and to add a `type` field to `struct HamtNode`.  While
 valid, this would also increase the size of the struct by 50% just to maintain
-a single bit of information. Thankfully, there is a more memory-efficient
+a single bit of information. However, there is a more memory-efficient
 solution: pointer tagging.
 
 Since pointers need to be word-aligned, that leaves the lower 3 bits of all
@@ -895,6 +895,11 @@ The interface provides two functions: the means to step from the current 5-bit
 hash to the next in `hash_next()`; and the ability query the current index of a
 key at the current trie depth in `hash_get_index()`.
 
+`hash_next()` takes a pointer to a `Hash` instance and steps that instance
+from the current to the next chunk. Taking a step involves increasing the
+`depth` and `shift`, and initiating a rehash if the `shift` indicates
+that the hash has been exhausted:
+
 ```c
 static inline Hash *hash_next(Hash *h)
 {
@@ -907,6 +912,11 @@ static inline Hash *hash_next(Hash *h)
     return h;
 }
 ```
+
+The index of a hash at its current depth corresponds to the decimal
+representation of the current chunk. To determine the current chunk,
+we right-shift the hash by `h->shift` to right-align the desired
+LSB and then mask with a window of `0x11111`, i.e. `0x1f`:
 
 ```c
 static inline uint32_t hash_get_index(const Hash *h)
