@@ -957,7 +957,15 @@ void table_free(struct HamtAllocator *ator, HamtNode *ptr, size_t size)
 
 ```
 
-### Re-allocation and table size manaagement
+### Re-allocation and table size management
+
+<p align="center">
+<img src="doc/img/table-extend.png" width="600"></img>
+</p>
+<p class="image-caption"><b>Figure 3:</b>
+Extending a table creates a new copy of the existing table with an additional
+row for the new node.
+</p>
 
 
 ```c
@@ -983,6 +991,13 @@ HamtNode *table_extend(struct HamtAllocator *ator, HamtNode *anchor,
 }
 
 ```
+<p align="center">
+<img src="doc/img/table-shrink.png" width="600"></img>
+</p>
+<p class="image-caption"><b>Figure 4:</b>
+Shrinking a table creates a new copy of the table with the specified row
+removed.
+</p>
 
 ```c
 HamtNode *table_shrink(struct HamtAllocator *ator, HamtNode *anchor,
@@ -1006,6 +1021,13 @@ HamtNode *table_shrink(struct HamtAllocator *ator, HamtNode *anchor,
 }
 
 ```
+<p align="center">
+<img src="doc/img/table-gather.png" width="600"></img>
+</p>
+<p class="image-caption"><b>Figure 5:</b>
+Gathering pulls a one-row-sized table into its parent table (essentially
+converting an internal node into a leaf node).
+</p>
 
 ```c
 HamtNode *table_gather(struct HamtAllocator *ator, HamtNode *anchor,
