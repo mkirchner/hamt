@@ -916,7 +916,7 @@ static inline Hash *hash_next(Hash *h)
 The index of a hash at its current depth corresponds to the decimal
 representation of the current chunk. To determine the current chunk,
 we right-shift the hash by `h->shift` to right-align the desired
-LSB and then mask with a window of `0x11111`, i.e. `0x1f`:
+LSB and then mask with `0x11111` which equals `0x1f`:
 
 ```c
 static inline uint32_t hash_get_index(const Hash *h)
@@ -928,6 +928,15 @@ static inline uint32_t hash_get_index(const Hash *h)
 
 ## Table management
 
+In order to facilitate memory management for tables, `libhamt` defines a set
+of helper functions. Each of these functions takes a `HamtAllocator` and calls
+the user-supplied allocation, re-allocation and deallocation functions as
+appropriate.
+
+### Life cycle management
+
+`table_allocate()` allocates tables with size `size` and returns a pointer to
+the newly allocated table.
 
 ```c
 HamtNode *table_allocate(struct HamtAllocator *ator, size_t size)
@@ -936,6 +945,10 @@ HamtNode *table_allocate(struct HamtAllocator *ator, size_t size)
 }
 ```
 
+`table_free()` deallocates the allocation referenced by `ptr`. It also expects
+a `size` parameter that provides a hint for allocation pool management
+(currently ignored by the underlying `mem_free()` implementation).
+
 ```c
 void table_free(struct HamtAllocator *ator, HamtNode *ptr, size_t size)
 {
@@ -943,6 +956,9 @@ void table_free(struct HamtAllocator *ator, HamtNode *ptr, size_t size)
 }
 
 ```
+
+### Re-allocation and table size manaagement
+
 
 ```c
 HamtNode *table_extend(struct HamtAllocator *ator, HamtNode *anchor,
