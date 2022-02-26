@@ -960,7 +960,7 @@ void table_free(struct HamtAllocator *ator, HamtNode *ptr, size_t size)
 ### Re-allocation and table size management
 
 <p align="center">
-<img src="doc/img/table-extend.png" width="600"></img>
+<img src="doc/img/table-extend.png" width="450"></img>
 </p>
 <p class="image-caption"><b>Figure 3:</b>
 Extending a table creates a new copy of the existing table with an additional
@@ -992,7 +992,7 @@ HamtNode *table_extend(struct HamtAllocator *ator, HamtNode *anchor,
 
 ```
 <p align="center">
-<img src="doc/img/table-shrink.png" width="600"></img>
+<img src="doc/img/table-shrink.png" width="450"></img>
 </p>
 <p class="image-caption"><b>Figure 4:</b>
 Shrinking a table creates a new copy of the table with the specified row
