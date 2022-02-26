@@ -1022,7 +1022,7 @@ HamtNode *table_shrink(struct HamtAllocator *ator, HamtNode *anchor,
 
 ```
 <p align="center">
-<img src="doc/img/table-gather.png" width="600"></img>
+<img src="doc/img/table-gather.png" width="450"></img>
 </p>
 <p class="image-caption"><b>Figure 5:</b>
 Gathering pulls a one-row-sized table into its parent table (essentially
