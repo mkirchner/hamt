@@ -754,19 +754,18 @@ The principal idea behing array mapping is to project a sparse bitmap index
 onto the index of a dense array, where the size of the array corresponds to
 the number of non-zero bits in the bitmap index.
 
-Given `HamtNode *p` is a valid pointer to a node, `p->as.table.index` (or
-equivalently, `INDEX(p)`) corresponds to a sparse bitmap index. The dense
-array is located at `p->as.table.ptr` (i.e. `TABLE(p)) and its size is
+Given `HamtNode *p` is a valid pointer to a node, `INDEX(p)` corresponds to a
+sparse bitmap index. The dense array is located at `TABLE(p)` and its size is
 determined by the [*population count*][wiki_popcount] of `INDEX(p)`.
 
-The mapping is conceptually trivial: to determine the dense index for every
-non-zero bit in the bitmap index, count the number of non-zero bits to the
-right of it. In other words, the first set bit goes to index 0, the second to
-index 1, and so forth.
+The mapping itself is conceptually trivial: to determine the dense index for
+every non-zero bit in the bitmap index, count the number of non-zero bits to
+the right of it. In other words, the first set bit goes to index 0, the second
+to index 1, and so forth.
 
 Efficiently implementing population counting (also known as the hamming
-weight) of a bitset is [not trivial][wiki_popcount]. `libhamt` falls back on a GCC/Clang
-intrinsic:
+weight) of a bitset is [not trivial][wiki_popcount]. `libhamt` falls back on a
+GCC/Clang intrinsic:
 
 ```c
 static inline int get_popcount(uint32_t n) { return __builtin_popcount(n); }
