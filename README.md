@@ -747,23 +747,51 @@ bitmap gives the size of the table and indexing is implemented using partial
 popcounts. Table elements can be accessed through
 `TABLE(anchor)[i]`, where `i` must be in the valid range.
 
-### Array mapping
+## Array mapping
+
+The principal idea behing array mapping is to project a sparse bitmap index
+onto the index of a dense array, where the size of the array corresponds to
+the number of non-zero bits in the bitmap index.
+
+Given `HamtNode *p` is a valid pointer to a node, `p->as.table.index` (or
+equivalently, `INDEX(p)`) corresponds to a sparse bitmap index. The dense
+array is located at `p->as.table.ptr` (i.e. `TABLE(p)) and its size is
+determined by the [*population count*][wiki_popcount] of `INDEX(p)`.
+
+The mapping is conceptually trivial: to determine the dense index for every
+non-zero bit in the bitmap index, count the number of non-zero bits to the
+right of it. In other words, the first set bit goes to index 0, the second to
+index 1, and so forth.
+
+Efficiently implementing population counting (also known as the hamming
+weight) of a bitset is [not trivial][wiki_popcount]. `libhamt` falls back on a GCC/Clang
+intrinsic:
 
 ```c
-static int get_popcount(uint32_t n) { return __builtin_popcount(n); }
+static inline int get_popcount(uint32_t n) { return __builtin_popcount(n); }
+```
 
-static int get_pos(uint32_t sparse_index, uint32_t bitmap)
+With `get_popcount()` available, determining the position (i.e. dense index)
+for a sparse index in a bitmap reduces to calculating the population count of
+the bitmap masked off above the sparse index:
+
+```c
+static inline int get_pos(uint32_t sparse_index, uint32_t bitmap)
 {
     return get_popcount(bitmap & ((1 << sparse_index) - 1));
 }
+```
 
+Lastly, to determine if a node has a child at a particular index `index`, we
+check if the bit at that index is set in the bitmap:
+
+```c
 static inline bool has_index(const HamtNode *anchor, size_t index)
 {
-    assert(anchor && "anchor must not be NULL");
-    assert(index < 32 && "index must not be larger than 31");
     return INDEX(anchor) & (1 << index);
 }
 ```
+
 ## Hashing
 
 * what is a hash function?
@@ -1263,4 +1291,5 @@ summary or [here][c_templating] for a more in-depth treatise.
 [wiki_avl_trees]: https://en.wikipedia.org/wiki/AVL_tree
 [wiki_red_black_trees]: https://en.wikipedia.org/wiki/Red–black_tree
 [wiki_b_trees]: https://en.wikipedia.org/wiki/B-tree
+[wiki_popcount]:https://en.wikipedia.org/wiki/Hamming_weight
 
