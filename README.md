@@ -666,6 +666,18 @@ to an internal node, <code>TABLE(node)</code> (or, equivalently, <code>
 node->as.table.ptr</code>) points to the first field of the successor table.
 </p>
 
+### The Anchor
+
+The `libhamt` codebase makes liberal use of the concept of an *anchor*.  An
+*anchor* is a `HamtNode*` pointer to an internal node (i.e.
+`is_value(VALUE(anchor))` evaluates to false). An `anchor` provides access to
+all information relevant to manage the table of child nodes: `INDEX(anchor)`
+returns the bitmap that encodes the array mapping, applying a popcount to the
+bitmap gives the size of the table and indexing is implemented using partial
+popcounts. Table elements can be accessed through
+`TABLE(anchor)[i]`, where `i` must be in the valid range.
+
+
 ### Pointer tagging
 
 The definition of `HamtNode` enables the construction of trees with a mix of
@@ -735,17 +747,6 @@ aligns the value field with `table.ptr`. The reverse order would work, but the
 `kv.key` pointer is dereferenced much more often in the code and so it is more
 convenient to use `kv.value`.
 
-
-### The Anchor
-
-The `libhamt` codebase makes liberal use of the concept of an *anchor*.  An
-*anchor* is a `HamtNode*` pointer to an internal node (i.e.
-`is_value(VALUE(anchor))` evaluates to false). An `anchor` provides access to
-all information relevant to manage the table of child nodes: `INDEX(anchor)`
-returns the bitmap that encodes the array mapping, applying a popcount to the
-bitmap gives the size of the table and indexing is implemented using partial
-popcounts. Table elements can be accessed through
-`TABLE(anchor)[i]`, where `i` must be in the valid range.
 
 ## Array mapping
 
