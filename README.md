@@ -794,9 +794,14 @@ static inline bool has_index(const HamtNode *anchor, size_t index)
 
 ## Hashing
 
+A *hash function* is a function that takes data of arbitrary size and maps it
+to a fixed-size value.
+
 * what is a hash function?
-* different classes: cryptographically secure, just efficient
+* different classes: non-cryptographic and cryptographic secure, just efficient
 It is a one-way function, that is, a function for which it is practically infeasible to invert or reverse the computation.
+
+* uniformity as a key property, in particular for HAMTs
 
 
 ```c
@@ -810,65 +815,14 @@ typedef uint32_t (*HamtKeyHashFn)(const void *key, const size_t gen);
 
 
 ```c
-#ifndef MURMUR3_H
-#define MURMUR3_H
-
-#include <stdint.h>
-#include <stdlib.h>
+/* from include/murmur3.h */
 
 uint32_t murmur3_32(const uint8_t *key, size_t len, uint32_t seed);
-
-#endif
 ```
 
 This declares the *murmur* hash function. In its standard form `murmur3_32`
 takes a pointer `key` to byte-sized objects, a count of `len` that speficies
 the number of bytes to hash and a random seed `seed`.
-
-Its [definition][murmur3] is concise:
-
-```c
-#include "murmur3.h"
-
-#include <string.h>
-
-static inline uint32_t murmur_32_scramble(uint32_t k)
-{
-    k *= 0xcc9e2d51;
-    k = (k << 15) | (k >> 17);
-    k *= 0x1b873593;
-    return k;
-}
-
-uint32_t murmur3_32(const uint8_t *key, size_t len, uint32_t seed)
-{
-    uint32_t h = seed;
-    uint32_t k;
-    /* Read in groups of 4. */
-    for (size_t i = len >> 2; i; i--) {
-        memcpy(&k, key, sizeof(uint32_t));
-        key += sizeof(uint32_t);
-        h ^= murmur_32_scramble(k);
-        h = (h << 13) | (h >> 19);
-        h = h * 5 + 0xe6546b64;
-    }
-    /* Read the rest. */
-    k = 0;
-    for (size_t i = len & 3; i; i--) {
-        k <<= 8;
-        k |= key[i - 1];
-    }
-    h ^= murmur_32_scramble(k);
-    /* Finalize. */
-    h ^= len;
-    h ^= h >> 16
-    h *= 0x85ebca6b;
-    h ^= h >> 13;
-    h *= 0xc2b2ae35;
-    h ^= h >> 16;
-    return h;
-}
-```
 
 [Add some info about murmur3 here]
 
@@ -895,14 +849,14 @@ Note the use of `gen` as a seed for the hash.
 For a hash trie, the number of elements in the trie is limited by the total number
 of hashes that fits into a 32-bit `uint32_t`, i.e. 2^32-1. Since the HAMT only
 uses 30 bits (in 6 chunks of 5 bits), the number of unique keys in the trie is
-limited to 2^30-1 = 1,073,741,823 keys. 
+limited to 2<sup>30</sup>-1 = 1,073,741,823 keys. 
 At the same time, since every layer of the
-tree uses 5 bits of the hash, the trie depth is limited to 6 layers.
+tree uses 5 bits of the hash, the trie depth is limited to 32/5 = 6 layers.
 Neither the hard limit to the number of elements in the trie,
 nor the inability to build a trie beyond depth of 6 are desirable properties.
 
 To address both issues, `libhamt` recalculates the hash with a different seed every
-32/5 = 6 layers. This requires a bit of state management and motivates the
+6 layers. This requires a bit of state management and motivates the
 existence of the `Hash` data type and functions that operate on it:
 
 ```c
@@ -994,6 +948,8 @@ void table_free(struct HamtAllocator *ator, HamtNode *ptr, size_t size)
 Extending a table creates a new copy of the existing table with an additional
 row for the new node.
 </p>
+
+**Table extension.**
 
 
 ```c
