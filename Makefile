@@ -19,16 +19,6 @@ TEST_SRCS := \
 TEST_OBJS := $(TEST_SRCS:%=$(BUILD_DIR)/%.o)
 TEST_DEPS := $(TEST_OBJS:.o=.d)
 
-PERF_SRCS := \
-	src/hamt.c \
-	src/murmur3.c \
-	test/perf.c \
-	test/utils.c \
-	test/words.c
-
-PERF_OBJS := $(PERF_SRCS:%=$(BUILD_DIR)/%.o)
-PERF_DEPS := $(PERF_OBJS:.o=.d)
-
 CPPFLAGS ?= $(INC_FLAGS) -MMD -MP -g -O0
 
 lib: $(BUILD_DIR)/src/libhamt.dylib
@@ -41,13 +31,6 @@ test: $(BUILD_DIR)/test/test_hamt
 
 $(BUILD_DIR)/test/test_hamt: $(TEST_OBJS)
 	$(CC) $(TEST_OBJS) -o $@ $(LDFLAGS)
-
-perf: $(BUILD_DIR)/test/perf
-	$(BUILD_DIR)/test/perf | tee $(BUILD_DIR)/test/perf.csv
-	python test/perf.py
-
-$(BUILD_DIR)/test/perf: $(PERF_OBJS)
-	$(CC) $(PERF_OBJS) -o $@ $(LDFLAGS)
 
 # c source
 $(BUILD_DIR)/%.c.o: %.c
