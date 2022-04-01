@@ -1,4 +1,4 @@
-# libhamt
+[#](#) libhamt
 A hash array-mapped trie (HAMT) implementation in C99. The implementation
 follows Bagwell's 2000 paper[[1]][bagwell_00_ideal], with a focus on clarity
 rather than raw speed.
@@ -190,9 +190,13 @@ const void *hamt_it_get_key(HamtIterator it);
 const void *hamt_it_get_value(HamtIterator it);
 ```
 
-Note that iterators maintain state about their traversal path and that changes
-to the underlying HAMT the iterator refers to, will likely cause undefined
-behavior.
+Iterators maintain state about their traversal path and changes to the HAMT
+that an iterator refers to implicitly invalidate the iteration (i.e. undefined
+behavior).
+
+The order in which iterators return the key value pairs is fully defined by
+the structure of the trie, which, in turn, is completely defined by the choice
+of hash function and (where applicable) seed.
 
 
 ## Insert & Remove
@@ -326,22 +330,25 @@ The following snippet illustrates the required changes:
 
 ...
 
+inline void nop(void *_) { return; }
+
 int main(int argc, char *argv[]) {
     ...
     /*
     Set up garbage collection. We set the function pointer for `free` to
     NULL to avoid explicit freeing of memory.
     */
-    struct HamtAllocator gc_alloc = {GC_malloc, GC_realloc, NULL};
+    struct HamtAllocator gc_alloc = {GC_malloc, GC_realloc, nop};
     t = hamt_create(hash_string, strcmp, &gc_alloc);
     ...
 }
 ```
 
-Note that we set the `gc_alloc.free` function pointer to `NULL` and not to `GC_free`
-which would be the drop-in replacement provided by the garbage collection.
-This ensures that we actually rely on the garbage collector and refrain from
-explicit deletion.
+We set the `gc_alloc.free` function pointer to point to `nop()`, a
+no-operation function. This is necessary to ensure that we rely on the garbage
+collector. If we were to provide a pointer to `GC_free()` (i.e. GC's drop-in
+replacement for the `free()` function), we would still implement explicit
+deallocation, just with a different free function.
 
 ### Example 3: Iterators
 
@@ -797,6 +804,10 @@ static inline bool has_index(const HamtNode *anchor, size_t index)
 A *hash function* is a function that takes data of arbitrary size and maps it
 to a fixed-size value.
 
+If, given a hash, it is practically infeasible to
+invert that mapping (i.e. determine which hash corresponds to wich input
+value)
+
 * what is a hash function?
 * different classes: non-cryptographic and cryptographic secure, just efficient
 It is a one-way function, that is, a function for which it is practically infeasible to invert or reverse the computation.
@@ -949,8 +960,9 @@ Extending a table creates a new copy of the existing table with an additional
 row for the new node.
 </p>
 
-**Table extension.**
-
+**Table extension.** `table_extend()` takes a pointer `anchor` to a table of
+size `n_rows`, uses allocator `ator` to create a new table of size `n_rows + 1`
+with an empty row at position `pos` and the bitmap index bit `index` set.
 
 ```c
 HamtNode *table_extend(struct HamtAllocator *ator, HamtNode *anchor,
@@ -1042,6 +1054,8 @@ HamtNode *table_dup(struct HamtAllocator *ator, HamtNode *anchor)
 ## Putting it all together
 
 ### Search
+
+
 
 ### Insert
 
