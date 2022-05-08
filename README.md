@@ -694,7 +694,7 @@ determine if a concrete `HamtNode*` pointer points to an internal or a leaf
 node. One solution would be to specify an `enum` that indicates the type
 (i.e. `NODE_LEAF`, etc.) and to add a `type` field to `struct HamtNode`.  While
 valid, this would also increase the size of the struct by 50% just to maintain
-a single bit of information. However, there is a more memory-efficient
+a single bit of information. Luckily, there is a more memory-efficient
 solution: pointer tagging.
 
 Since pointers need to be word-aligned, that leaves the lower 3 bits of all
@@ -745,12 +745,13 @@ And, in order to determine what we are looking at, we use `is_value`:
     }
 ```
 
-Pointer tagging is the explanation for the ordering of the `value` and `key`
-fields in the `struct kv` struct. The `union` in `HamtNode` states that the
-memory location of the `struct kv` and `struct table` structs overlap. Since
+Pointer tagging is the reason why the `value` and `key`
+fields in the `struct kv` struct are ordered the way they are.
+The `union` in `HamtNode` causes the
+memory locations of the `struct kv` and `struct table` structs to overlap. Since
 the `table.index` field is *not* a pointer (and the bottom-three-bits-are-zero
 guarantee does not apply), its storage location cannot be used for pointer
-tagging, leaving the `table.ptr` to the task.  Putting `kv.value` first,
+tagging, leaving the `table.ptr` to the task. Putting `kv.value` first,
 aligns the value field with `table.ptr`. The reverse order would work, but the
 `kv.key` pointer is dereferenced much more often in the code and so it is more
 convenient to use `kv.value`.
@@ -802,29 +803,41 @@ static inline bool has_index(const HamtNode *anchor, size_t index)
 
 ## Hashing
 
-A *hash function* is a function that takes data of arbitrary size and maps it
-to a fixed-size value.
+A [*hash function*][wiki_hash_function] is a function that takes data of
+arbitrary size and maps it to a fixed-size value (often machine word sizes).
+*Good* hash functions are fast to compute and produce *uniform* output, they
+map their inputs as evenly as possible over the output range.  If it is
+practically infeasible to invert the mapping (i.e. determine which hash
+corresponds to which input value), the hash function is called a [cryptographic
+hash function][wiki_cryptographic_hash_function].
 
-If, given a hash, it is practically infeasible to
-invert that mapping (i.e. determine which hash corresponds to wich input
-value)
+For the purpose of implementing a HAMT, cryptographical security is not a
+design goal. However, the uniformity of the hash function has direct impact on
+the balance of the tree: it is the hash that pre-determines all key positions
+in the fully populated tree and it is its distribution properties that
+determines the number of collisions (and hence depth extensions) we introduce.
 
-* what is a hash function?
-* different classes: non-cryptographic and cryptographic secure, just efficient
-It is a one-way function, that is, a function for which it is practically infeasible to invert or reverse the computation.
-
-* uniformity as a key property, in particular for HAMTs
-
+`libhamt` does not force clients to use a particular hash function. The
+libary exposes a hash function signature of the form
 
 ```c
 typedef uint32_t (*HamtKeyHashFn)(const void *key, const size_t gen);
 ```
 
-* hash functions schould be fast and show good distribution
-* cryptographical security is not an issue
-* examples: Knuth's universal hash, djb2, murmur
-* we're choosing murmur3: simple implementation, great properties
+and expects users to provide a suitable function pointer as part of the call to
+`hamt_create()` which, among other parameters, takes a hash function:
 
+```c
+/* ... see below for a practical definition of my_keyhash_string */
+
+    HAMT t = hamt_create(my_keyhash_string, my_keycmp_string,
+                         &hamt_allocator_default);
+```
+
+There are multiple [good, practical choices][why_simple_hash_functions_work]
+for the HAMT.  Per default `libhamt` includes its [own][hamt_src_murmur],
+[tested][hamt_src_test_murmur] implementation of 32-bit
+[MurmurHash3][wiki_murmurhash]:
 
 ```c
 /* from include/murmur3.h */
@@ -835,11 +848,6 @@ uint32_t murmur3_32(const uint8_t *key, size_t len, uint32_t seed);
 This declares the *murmur* hash function. In its standard form `murmur3_32`
 takes a pointer `key` to byte-sized objects, a count of `len` that speficies
 the number of bytes to hash and a random seed `seed`.
-
-[Add some info about murmur3 here]
-
-hamt has unit tests that validate the murmur hash results against know
-values (add link here)
 
 In order to use murmur3 as a `hamt` hash function, we need to wrap it into a
 helper function:
@@ -853,7 +861,28 @@ static uint32_t my_keyhash_string(const void *key, const size_t gen)
 ```
 
 Here, the wrapper makes use of `strlen(3)`, assuming valid C strings as keys.
-Note the use of `gen` as a seed for the hash.
+Note the use of `gen` as a seed for the hash (see below for the hash exhaustion
+discussion).
+
+Here is a full example:
+
+```c
+#include "murmur3.h"
+
+/* ... */
+
+static uint32_t my_keyhash_string(const void *key, const size_t gen)
+{
+    uint32_t hash = murmur3_32((uint8_t *)key, strlen((const char *)key), gen);
+    return hash;
+}
+
+/* ... */
+
+    HAMT t = hamt_create(my_keyhash_string, my_keycmp_string,
+                         &hamt_allocator_default);
+
+```
 
 
 ### Hash exhaustion: hash generations and state management
@@ -1244,23 +1273,29 @@ summary or [here][c_templating] for a more in-depth treatise.
 [sedgewick_11_algorithms]: https://www.amazon.com/Algorithms-4th-Robert-Sedgewick/dp/032157351X
 [stutter]: https://github.com/mkirchner/stutter
 [wiki_associative_array]: https://en.wikipedia.org/wiki/Associative_array
+[wiki_avl_trees]: https://en.wikipedia.org/wiki/AVL_tree
+[wiki_b_trees]: https://en.wikipedia.org/wiki/B-tree
 [wiki_bsd_libc]:https://en.wikipedia.org/wiki/C_standard_library#BSD_libc
+[wiki_cryptographic_hash_function]: https://en.wikipedia.org/wiki/Cryptographic_hash_function
 [wiki_glib]: https://en.wikipedia.org/wiki/GLib
 [wiki_glibc]: https://en.wikipedia.org/wiki/Glibc
+[wiki_hash_function]: https://en.wikipedia.org/wiki/Hash_function
 [wiki_hash_table]: https://en.wikipedia.org/wiki/Hash_table
 [wiki_hash_tree]: https://en.wikipedia.org/wiki/Hash_tree_(persistent_data_structure)
 [wiki_immutable_object]: https://en.wikipedia.org/wiki/Immutable_object
 [wiki_libc]: https://en.wikipedia.org/wiki/C_standard_library
 [wiki_persistent]: https://en.wikipedia.org/wiki/Persistent_data_structure
-[wiki_persistent_data_structure]: https://en.wikipedia.org/wiki/Persistent_data_structure 
+[wiki_persistent_data_structure]: https://en.wikipedia.org/wiki/Persistent_data_structure
 [wiki_persistent_structural_sharing]: https://en.wikipedia.org/wiki/Persistent_data_structure#Techniques_for_preserving_previous_versions
+[wiki_popcount]:https://en.wikipedia.org/wiki/Hamming_weight
+[wiki_red_black_trees]: https://en.wikipedia.org/wiki/Red–black_tree
 [wiki_referential_transparency]: https://en.wikipedia.org/wiki/Referential_transparency
 [wiki_set_adt]: https://en.wikipedia.org/wiki/Set_(abstract_data_type)
 [wiki_structural_sharing]: https://en.wikipedia.org/wiki/Persistent_data_structure#Trees
 [wiki_trie]: https://en.wikipedia.org/wiki/Trie
 [wiki_value_semantics]: https://en.wikipedia.org/wiki/Value_semantics
-[wiki_avl_trees]: https://en.wikipedia.org/wiki/AVL_tree
-[wiki_red_black_trees]: https://en.wikipedia.org/wiki/Red–black_tree
-[wiki_b_trees]: https://en.wikipedia.org/wiki/B-tree
-[wiki_popcount]:https://en.wikipedia.org/wiki/Hamming_weight
+[why_simple_hash_functions_work]: https://theoryofcomputing.org/articles/v009a030/v009a030.pdf
+[hamt_src_murmur]: ./src/murmur3.c
+[hamt_src_test_murmur]: https://github.com/mkirchner/hamt/blob/62a24e5501d72d5fb505d3c642113015f46904d3/test/test_hamt.c#L92
+[wiki_murmurhash]: https://en.wikipedia.org/wiki/MurmurHash
 
