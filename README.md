@@ -28,8 +28,8 @@ A hash array-mapped trie implementation in C. This is work in progress.
 ### Performance testing
 
 - [x] set up perf test tooling
-- [ ] decide on ref implementations
-- [ ] implement perf tests suite
+- [x] decide on ref implementations
+- [x] implement perf tests suite
 
 ### Immutability
 
