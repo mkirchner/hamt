@@ -1136,6 +1136,12 @@ HamtNode *table_gather(struct HamtAllocator *ator, HamtNode *anchor,
 
 ```
 
+**Table duplication.** Lastly, table duplication. This will be required for path
+copying when we implement persistency and it is so straightforward that there
+is no diagram: given an anchor, `table_dup()` determines the size of the table
+that the anchor points to, allocates the required memory and performs a range
+copy using `memcpy()` to duplicate the table contents:
+
 ```c
 HamtNode *table_dup(struct HamtAllocator *ator, HamtNode *anchor)
 {
