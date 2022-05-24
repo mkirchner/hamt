@@ -1167,6 +1167,23 @@ HamtNode *table_dup(struct HamtAllocator *ator, HamtNode *anchor)
 * Requires two abstractions: the anchor that we already introduced and
   `SearchResult` to separate different search states from NULL pointers
 
+When we search for a key in the HAMT, there are two fundamental outcomes: the
+key is either there, or it is not. These are the actual semantics of the
+`hamt_get()` function: it either returns a pointer to the value stored under
+the key or it returns `NULL`.
+
+However, upon closer inspection we see that there are two semantically
+different failure cases: the search can be unsuccessful because a key does not
+exist in the HAMT *or* it can be unsuccessful because there is a key value pair
+that happens to have the same partial hash but a different key (i.e. the hash
+has not been sufficiently exhausted to differentiate between the two keys). The
+two cases coincide with the two insertion strategies used in HAMT and knowing
+which one to use immediately after determining the insertion point is very
+helpful.
+
+Thus, the return value of the (internal, shared) search function
+needs to be ternary. And lo and behold, it is:
+
 ```c
 
 /* Search results */
@@ -1177,6 +1194,15 @@ typedef enum {
 } SearchStatus;
 ```
 
+Not surprisingly, `SEARCH_SUCCESS` indicates that the key in question was
+found, `SEARCH_FAIL_NOTFOUND` indicates a search failure due to a missing key,
+an `SEARCH_FAIL_KEYMISMATCH` signals a hash conflict. 
+
+The complete return value is a tiny bit more heavy-weight: beyond the
+search status it also returns a pointer to the current anchor, a pointer to the
+value in the table that belongs to that anchor, and a convenience pointer to
+the hash that was used to search (and possibly find) the key:
+
 ```c
 typedef struct SearchResult {
     SearchStatus status;
@@ -1185,18 +1211,26 @@ typedef struct SearchResult {
     Hash *hash;
 } SearchResult;
 ```
+Here, `anchor` always points to the anchor at which the search was terminated;
+if the search was successful, `value` points to the table row that holds the
+key/value pair with matching key; if it was unsuccessful with a key mismatch,
+`value` points to the mismatching key/value pair. If the search was
+unsuccessful because the key did not exist, `value` equals `NULL`.
 
-* Prerequisites: pointer to an anchor, the key to look for
-* Create valid `Hash` object from the key
-* Fundamental algorithm is recursive
-  * look at index bitmap of the anchor: is the bit for the hash set?
-  * if no, terminate search, return FAIL_NOTFOUND
-  * if yes, check the type of the entry at the expected index/position: is it
-    a value?
-    * if yes, compare the keys. Do they match?
-      * if yes, return SUCCESS
-      * if no, return FAIL_KEYMISMATCH
-    * if no, it must be a table. Make the table the new anchor and recurse
+With these prerequisites out of the way, we can tackle the actual search
+algorithm. Conceptually, the approach is
+
+1. Prerequisites: pointer to an anchor, the key to look for
+2. Create valid `Hash` object from the key
+3. Fundamental algorithm is recursive
+  1. look at index bitmap of the anchor: is the bit for the hash set?
+  2. if no, terminate search, return FAIL_NOTFOUND
+  3. if yes, check the type of the entry at the expected index/position: is it
+     a value?
+    1. if yes, compare the keys. Do they match?
+      1. if yes, return SUCCESS
+      2. if no, return FAIL_KEYMISMATCH
+    2. if no, it must be a table. Make the table the new anchor and recurse
 
 ### Insert
 
