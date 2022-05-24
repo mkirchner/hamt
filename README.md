@@ -1160,9 +1160,47 @@ HamtNode *table_dup(struct HamtAllocator *ator, HamtNode *anchor)
 
 ### Search
 
+* Directly provides an implementation for `hamt_get()`
+* Insert/remove require search, too, so aim for generic solution that can be
+  used in all these use cases
 
+* Requires two abstractions: the anchor that we already introduced and
+  `SearchResult` to separate different search states from NULL pointers
+
+```c
+
+/* Search results */
+typedef enum {
+    SEARCH_SUCCESS,
+    SEARCH_FAIL_NOTFOUND,
+    SEARCH_FAIL_KEYMISMATCH
+} SearchStatus;
+```
+
+```c
+typedef struct SearchResult {
+    SearchStatus status;
+    HamtNode *anchor;
+    HamtNode *value;
+    Hash *hash;
+} SearchResult;
+```
+
+* Prerequisites: pointer to an anchor, the key to look for
+* Create valid `Hash` object from the key
+* Fundamental algorithm is recursive
+  * look at index bitmap of the anchor: is the bit for the hash set?
+  * if no, terminate search, return FAIL_NOTFOUND
+  * if yes, check the type of the entry at the expected index/position: is it
+    a value?
+    * if yes, compare the keys. Do they match?
+      * if yes, return SUCCESS
+      * if no, return FAIL_KEYMISMATCH
+    * if no, it must be a table. Make the table the new anchor and recurse
 
 ### Insert
+
+
 
 ### Remove
 
