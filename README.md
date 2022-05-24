@@ -1223,14 +1223,14 @@ algorithm. Conceptually, the approach is
 1. Prerequisites: pointer to an anchor, the key to look for
 2. Create valid `Hash` object from the key
 3. Fundamental algorithm is recursive
-  1. look at index bitmap of the anchor: is the bit for the hash set?
-  2. if no, terminate search, return FAIL_NOTFOUND
-  3. if yes, check the type of the entry at the expected index/position: is it
-     a value?
-    1. if yes, compare the keys. Do they match?
-      1. if yes, return SUCCESS
-      2. if no, return FAIL_KEYMISMATCH
-    2. if no, it must be a table. Make the table the new anchor and recurse
+   1. look at index bitmap of the anchor: is the bit for the hash set?
+   2. if no, terminate search, return FAIL_NOTFOUND
+   3. if yes, check the type of the entry at the expected index/position: is it
+      a value?
+      1. if yes, compare the keys. Do they match?
+         1. if yes, return SUCCESS
+         2. if no, return FAIL_KEYMISMATCH
+      2. if no, it must be a table. Make the table the new anchor and recurse
 
 ### Insert
 
