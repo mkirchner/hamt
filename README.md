@@ -1,5 +1,7 @@
 # libhamt
 
+*This is work in progress, in particular the docs.*
+
 A hash array-mapped trie (HAMT) implementation in C99. The implementation
 follows Bagwell's 2000 paper[[1]][bagwell_00_ideal], with a focus on clarity
 rather than raw speed.
