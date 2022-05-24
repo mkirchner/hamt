@@ -616,12 +616,12 @@ outlined above.
 With a branching factor *k*, internal nodes have at most *k* successors but
 can be sparsely populated. To allow for a memory-efficient representation,
 internal nodes have a pointer `ptr` that points to a fixed-size, right-sized
-*array* of pointers to the child nodes and a *k*-bit `index` bitmap field that
+*array* of child nodes (also known as a *table*) and a *k*-bit `index` bitmap field that
 keeps track of the size and occupancy of that array.
-Because `index` is a bitmap field, the number of one-bits in `index` yields
-the size of the array that `ptr` points to.
 
-`libhamt` uses *k*=32.
+`libhamt` uses *k*=32 and because `index` is a 32-bit bitmap field, the number
+of one-bits in `index` yields the size of the array that `ptr` points to (also
+known as the *population count* or `popcount()` of `index`).
 
 This suggests an initial (incomplete) definition along the following lines:
 ```c
@@ -951,12 +951,26 @@ static inline uint32_t hash_get_index(const Hash *h)
 
 ## Table management
 
-In order to facilitate memory management for tables, `libhamt` defines a set
-of helper functions. Each of these functions takes a `HamtAllocator` and calls
-the user-supplied allocation, re-allocation and deallocation functions as
-appropriate.
+In order to facilitate memory management for tables (aka the internal nodes),
+`libhamt` defines a set of helper functions. Each of these functions takes a
+`HamtAllocator` and calls the user-supplied allocation, re-allocation and
+deallocation functions as appropriate.
 
-### Life cycle management
+We start by defining a simple memory abstraction (it would also be correct to use real functions
+instead of preprocessor macros for this):
+
+```c
+#define mem_alloc(ator, size) (ator)->malloc(size)
+#define mem_realloc(ator, ptr, size) (ator)->realloc(ptr, size)
+#define mem_free(ator, ptr) (ator)->free(ptr)
+```
+
+This will make it easier to add optimizations (e.g. table caching) in the
+future. On top of these macros, table lifecycle management is accomplished
+with a few dedicated allocation and de-allocation functions.
+
+
+### Simple allocation and deallocation
 
 `table_allocate()` allocates tables with size `size` and returns a pointer to
 the newly allocated table.
@@ -968,9 +982,10 @@ HamtNode *table_allocate(struct HamtAllocator *ator, size_t size)
 }
 ```
 
-`table_free()` deallocates the allocation referenced by `ptr`. It also expects
-a `size` parameter that provides a hint for allocation pool management
-(currently ignored by the underlying `mem_free()` implementation).
+`table_free()` deallocates the allocation referenced by `ptr`. It also
+supports taking a `size` parameter for future extension (e.g. provide a hint
+for allocation pool management) that is currently ignored by the underlying
+`mem_free()` implementation.
 
 ```c
 void table_free(struct HamtAllocator *ator, HamtNode *ptr, size_t size)
@@ -980,7 +995,24 @@ void table_free(struct HamtAllocator *ator, HamtNode *ptr, size_t size)
 
 ```
 
-### Re-allocation and table size management
+### Specialized table resize operations
+
+While it is possible to implement table re- and right-sizing with the
+two functions introduced above, it makes a lot of sense to provide specialized
+functionality for the key allocation/de-allocation use cases: extending,
+shrinking and gathering a table.
+
+**Table extension.** Since the tables in a HAMT are right-sized to minimize
+memory overhead, item insertion must necessarily add an additional row to an
+existing table. As illustrated in figure 3, the table extension function takes an anchor for an existing
+table, allocates a new table with increased size, copies over the exsiting
+entries (leaving a gap at the appropriate position for the new row), assigns
+the new key and value to the fields in the new row, updates the anchor with
+the new memory location of the table and the new index, and eventually frees the
+memory of the old table.
+
+
+
 
 <p align="center">
 <img src="doc/img/table-extend.png" width="450"></img>
@@ -990,9 +1022,14 @@ Extending a table creates a new copy of the existing table with an additional
 row for the new node.
 </p>
 
-**Table extension.** `table_extend()` takes a pointer `anchor` to a table of
-size `n_rows`, uses allocator `ator` to create a new table of size `n_rows + 1`
-with an empty row at position `pos` and the bitmap index bit `index` set.
+Looking at the code, this is implemented in verbatim in the `table_extend()`
+function. `table_extend()` takes an `anchor` pointer to a table of
+size `n_rows`, then uses the allocator `ator` to create a new table of size `n_rows + 1`
+with an empty row at position `pos` and the bitmap index bit `index` set. It
+uses `memcpy()` to copy memory ranges into the the appropriate positions in
+the new allocation, frees the old table and assignes the new table `ptr` and
+`index` in the anchor:
+
 
 ```c
 HamtNode *table_extend(struct HamtAllocator *ator, HamtNode *anchor,
@@ -1005,8 +1042,8 @@ HamtNode *table_extend(struct HamtAllocator *ator, HamtNode *anchor,
         /* copy over table */
         memcpy(&new_table[0], &TABLE(anchor)[0], pos * sizeof(HamtNode));
         /* note: this works since (n_rows - pos) == 0 for cases
-         * where we're adding the new k/v pair at the end (i.e. memcpy(a, b, 0)
-         * is a nop) */
+         * where we're adding the new k/v pair at the end and memcpy(a, b, 0)
+         * is a nop */
         memcpy(&new_table[pos + 1], &TABLE(anchor)[pos],
                (n_rows - pos) * sizeof(HamtNode));
     }
@@ -1015,8 +1052,17 @@ HamtNode *table_extend(struct HamtAllocator *ator, HamtNode *anchor,
     INDEX(anchor) |= (1 << index);
     return anchor;
 }
-
 ```
+
+**Shrinking a table.** Shrinking a table is the inverse operation of table
+extension: since we maintain right-sized tables as an invariant, we need to
+adjust table sizes the moment the client deletes a key/value pair from the
+HAMT.
+
+Figure 4 illustrates the concept: given an anchor, the shrinking function
+returns a new table with the specified row removed.
+
+
 <p align="center">
 <img src="doc/img/table-shrink.png" width="450"></img>
 </p>
@@ -1024,6 +1070,14 @@ HamtNode *table_extend(struct HamtAllocator *ator, HamtNode *anchor,
 Shrinking a table creates a new copy of the table with the specified row
 removed.
 </p>
+
+In the code, this is what `table_shrink()` does. In the same way as
+`table_extend()` the function takes a pointer `ator` to the global allocator,
+a pointer `anchor` to the current anchor, the size of the current tables as
+`n_rows`, and the pair of one-hot bitmap index `index` and storage array
+position `pos`. And, in analogy to table extension, the function allocation a
+right-sized table, copies the data to keep using range copies with `memcpy()`,
+frees up the old table and updates the anchor to reflect the changes.
 
 ```c
 HamtNode *table_shrink(struct HamtAllocator *ator, HamtNode *anchor,
@@ -1045,8 +1099,16 @@ HamtNode *table_shrink(struct HamtAllocator *ator, HamtNode *anchor,
     TABLE(anchor) = new_table;
     return anchor;
 }
-
 ```
+
+**Table gathering.** As we are deleting entries from the HAMT, we may end up
+with the table structure shown in Figure 5: a table in which one of the
+entries is a single-row table. What we want to do in these cases is to replace
+the table entry in `TABLE(anchor)[1]` with the key/value pair from
+`TABLE(TABLE(anchor)[1])` and *gather* the one-row table into its parent.
+While this comes at additional computational cost upon delete, it maintains
+the logarithmic depth properties as the HAMT changes its size.
+
 <p align="center">
 <img src="doc/img/table-gather.png" width="450"></img>
 </p>
@@ -1054,6 +1116,11 @@ HamtNode *table_shrink(struct HamtAllocator *ator, HamtNode *anchor,
 Gathering pulls a one-row-sized table into its parent table (essentially
 converting an internal node into a leaf node).
 </p>
+
+The code is straightforward: we take the allocator `alloc`, the `anchor`
+pointer, and the position `pos` of the single-row table inside the parent
+table, copy over the key and value from the child table to the parent
+(maintaining a temporary handle on the child) and then free the child table:
 
 ```c
 HamtNode *table_gather(struct HamtAllocator *ator, HamtNode *anchor,
