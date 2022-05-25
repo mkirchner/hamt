@@ -1204,7 +1204,7 @@ typedef enum {
 
 where `SEARCH_SUCCESS` indicates that the key in question was
 found, `SEARCH_FAIL_NOTFOUND` indicates a search failure due to a missing key,
-an `SEARCH_FAIL_KEYMISMATCH` signals a hash conflict.
+and `SEARCH_FAIL_KEYMISMATCH` signals a hash conflict.
 
 We also declare the return value of the internal search function to be a `search_result`:
 
