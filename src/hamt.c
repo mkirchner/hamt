@@ -605,7 +605,7 @@ struct hamt_iteratorItem {
     struct hamt_iteratorItem *next;
 };
 
-struct hamt_iteratorImpl {
+struct hamt_iterator_impl {
     HAMT trie;
     hamt_node *cur;
     struct hamt_iteratorItem *head, *tail;
@@ -646,8 +646,8 @@ static struct hamt_iteratorItem *iterator_pop_item(hamt_iterator it)
 
 hamt_iterator hamt_it_create(const HAMT trie)
 {
-    struct hamt_iteratorImpl *it =
-        mem_alloc(trie->ator, sizeof(struct hamt_iteratorImpl));
+    struct hamt_iterator_impl *it =
+        mem_alloc(trie->ator, sizeof(struct hamt_iterator_impl));
     it->trie = trie;
     it->cur = NULL;
     it->head = it->tail = NULL;

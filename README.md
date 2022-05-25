@@ -183,7 +183,7 @@ key/value pair. In order to delete an existing and/or exhausted iterator, call
 `hamt_it_delete()`.
 
 ```c
-typedef struct hamt_iteratorImpl *hamt_iterator;
+typedef struct hamt_iterator_impl *hamt_iterator;
 
 hamt_iterator hamt_it_create(const HAMT trie);
 void hamt_it_delete(hamt_iterator it);
