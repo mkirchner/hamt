@@ -412,6 +412,8 @@ loading and benchmarking functions).
 The build process is governed by a single `Makefile` in the project root
 directory.
 
+### Programming Style
+
 ### Building the project
 
 To build the library and run the tests:
