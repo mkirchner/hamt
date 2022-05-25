@@ -1160,29 +1160,44 @@ HamtNode *table_dup(struct HamtAllocator *ator, HamtNode *anchor)
 
 ### Search
 
-* Directly provides an implementation for `hamt_get()`
-* Insert/remove require search, too, so aim for generic solution that can be
-  used in all these use cases
+For the HAMT, search is a multi-use tool. It is not only required for item
+retrieval (i.e. the implementation of `hamt_get()`) but also to find the
+anchors on which the insert and remove functionality will operate. It is
+therefore beneficial to approach search from a slightly more generic
+perspective, clearly separating internal (`static` in terms of symbol
+visibility for C) and external search capabilities and introducing
+abstractions that are most suitable to support all the different use cases.
 
-* Requires two abstractions: the anchor that we already introduced and
-  `SearchResult` to separate different search states from NULL pointers
+The key observation for the HAMT is that search results have three possible
+outcomes and it is beenficial to maintain ternary logic in the internal interfaces
+(i.e. avoid limiting ourselves to binary `NULL` vs. non-`NULL` return values).
 
-When we search for a key in the HAMT, there are two fundamental outcomes: the
-key is either there, or it is not. These are the actual semantics of the
-`hamt_get()` function: it either returns a pointer to the value stored under
-the key or it returns `NULL`.
+When we search for a key in the HAMT, there
+are two fundamental outcomes: the key is either there, or it is not. These are
+exactly the semantics of the user-facing `hamt_get()` function: it either
+returns a pointer to the value stored under the key or it returns `NULL`.
 
-However, upon closer inspection we see that there are two semantically
-different failure cases: the search can be unsuccessful because a key does not
-exist in the HAMT *or* it can be unsuccessful because there is a key value pair
-that happens to have the same partial hash but a different key (i.e. the hash
-has not been sufficiently exhausted to differentiate between the two keys). The
-two cases coincide with the two insertion strategies used in HAMT and knowing
-which one to use immediately after determining the insertion point is very
-helpful.
+Looking closer at the failure cases, we can see that they fall into two
+classes: the search can be unsuccessful because a key does not exist in the
+HAMT *or* it can be unsuccessful because there is a key value pair that happens
+to have the same partial hash but a different key (i.e. the hash has not been
+sufficiently exhausted to differentiate between the two keys).
 
-Thus, the return value of the (internal, shared) search function
-needs to be ternary. And lo and behold, it is:
+While the distinction is trifling from the existential perspective,
+the different cases call for different strategies when inserting data into
+the tree.
+
+In order to model the ternary logic, we define an explicit return type `SearchStatus`
+for the search function:
+
+```c
+static SearchResult search_recursive(...)
+{
+    // ...
+}
+```
+
+The definition of `SearchStatus` is
 
 ```c
 
@@ -1194,7 +1209,7 @@ typedef enum {
 } SearchStatus;
 ```
 
-Not surprisingly, `SEARCH_SUCCESS` indicates that the key in question was
+where `SEARCH_SUCCESS` indicates that the key in question was
 found, `SEARCH_FAIL_NOTFOUND` indicates a search failure due to a missing key,
 an `SEARCH_FAIL_KEYMISMATCH` signals a hash conflict. 
 
