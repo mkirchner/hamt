@@ -779,7 +779,7 @@ MU_TEST_SUITE(test_suite)
 
 int main()
 {
-    printf("---=[ hash_state array mapped trie tests\n");
+    printf("---=[ Hash array mapped trie tests\n");
     char *result = test_suite();
     if (result != 0) {
         printf("%s\n", result);
