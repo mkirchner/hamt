@@ -412,6 +412,8 @@ loading and benchmarking functions).
 The build process is governed by a single `Makefile` in the project root
 directory.
 
+### Programming Style
+
 ### Building the project
 
 To build the library and run the tests:
@@ -1160,9 +1162,99 @@ HamtNode *table_dup(struct HamtAllocator *ator, HamtNode *anchor)
 
 ### Search
 
+Search is a multi-use tool. It is required for item
+retrieval (i.e. the implementation of `hamt_get()`) and to find the
+anchors on which the insert and remove functionality will operate.
+It is desirable to approach the search implementation from a slightly more generic
+perspective such that we do not need to re-invent the wheel for every use case.
 
+The key observation for the HAMT is that search results have three possible
+outcomes and that it is benficial to maintain ternary logic in the internal interfaces
+(i.e. avoid limiting ourselves to binary `NULL` vs. non-`NULL` return values).
+
+
+When we search for a key in the HAMT, there
+are two fundamental outcomes: the key is either there, or it is not (note that these are
+exactly the semantics of the user-facing `hamt_get()` function: it either
+returns a pointer to the value stored under the key or it returns `NULL`).
+Looking closer, searches can fail for two reasons:
+the search can be unsuccessful because a key does not exist in the
+HAMT *or* it can be unsuccessful because there is a key value pair that happens
+to have the same partial hash but a different key (i.e. the hash has not been
+sufficiently exhausted to differentiate between the two keys).
+
+While the distinction is trifling from the existential perspective,
+the different cases call for different strategies when inserting data into
+the tree (see below).
+
+As a consequence, we will be using a ternary value approach inside the `hamt.c`
+compilation unit and wrap the function calls in a suitable fashion to maintain
+the usual, binary use-`NULL`-as-a-failure-indicator approach in the API.
+
+To model the three states, we create a suitable three-value enumaration called
+`SearchStatus`
+
+```c
+typedef enum {
+    SEARCH_SUCCESS,
+    SEARCH_FAIL_NOTFOUND,
+    SEARCH_FAIL_KEYMISMATCH
+} SearchStatus;
+```
+
+where `SEARCH_SUCCESS` indicates that the key in question was
+found, `SEARCH_FAIL_NOTFOUND` indicates a search failure due to a missing key,
+an `SEARCH_FAIL_KEYMISMATCH` signals a hash conflict. 
+
+We also declare the return value of the internal search function to be a `SearchResult`:
+
+```c
+static SearchResult search_recursive(...)
+{
+    // ...
+}
+```
+
+`SearchResult` is a bit more heavy-weight: beyond the
+search status it also returns a pointer to the current anchor, a pointer to the
+value in the table that belongs to that anchor, and a convenience pointer to
+the hash that was used to search (and possibly find) the key:
+
+```c
+typedef struct SearchResult {
+    SearchStatus status;
+    HamtNode *anchor;
+    HamtNode *value;
+    Hash *hash;
+} SearchResult;
+```
+Here, `anchor` always points to the anchor at which the search was terminated;
+if the search was successful, `value` points to the table row that holds the
+key/value pair with matching key; if it was unsuccessful with a key mismatch,
+`value` points to the mismatching key/value pair. If the search was
+unsuccessful because the key did not exist, `value` equals `NULL`.
+
+With these prerequisites out of the way, we can tackle the actual search
+algorithm.
+
+
+Conceptually, the approach is
+
+1. Prerequisites: pointer to an anchor, the key to look for
+2. Create valid `Hash` object from the key
+3. Fundamental algorithm is recursive
+   1. look at index bitmap of the anchor: is the bit for the hash set?
+   2. if no, terminate search, return FAIL_NOTFOUND
+   3. if yes, check the type of the entry at the expected index/position: is it
+      a value?
+      1. if yes, compare the keys. Do they match?
+         1. if yes, return SUCCESS
+         2. if no, return FAIL_KEYMISMATCH
+      2. if no, it must be a table. Make the table the new anchor and recurse
 
 ### Insert
+
+
 
 ### Remove
 
