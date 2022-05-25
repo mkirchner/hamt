@@ -103,25 +103,25 @@ close with an outlook and an appendix.
 
 The core data type exported in the `libhamt` interface is `HAMT`. In order to
 create a `HAMT` instance, one must call `hamt_create()`, which requires a
-hash function of type `HamtKeyHashFn` to hash keys, a comparison function of
-type `HamtCmpFn` to compare keys, and a pointer to a `HamtAllocator` instance.
+hash function of type `hamt_key_hash_fn` to hash keys, a comparison function of
+type `hamt_cmp_fn` to compare keys, and a pointer to a `hamt_allocator` instance.
 `hamt_delete()` deletes `HAMT` instances that were created with `hamt_create()`.
 
 
 ```c
 /* The libhamt core data structure is a handle to a hash array-mapped trie */
-typedef struct HamtImpl *HAMT;
+typedef struct hamt_impl *HAMT;
 
 /* Function signature definitions for key comparison and hashing */
-typedef int (*HamtCmpFn)(const void *lhs, const void *rhs);
-typedef uint32_t (*HamtKeyHashFn)(const void *key, const size_t gen);
+typedef int (*hamt_cmp_fn)(const void *lhs, const void *rhs);
+typedef uint32_t (*hamt_key_hash_fn)(const void *key, const size_t gen);
 
 /* API functions for lifecycle management */
-HAMT hamt_create(HamtKeyHashFn key_hash, HamtCmpFn key_cmp, struct HamtAllocator *ator);
+HAMT hamt_create(hamt_key_hash_fn key_hash, hamt_cmp_fn key_cmp, struct hamt_allocator *ator);
 void hamt_delete(HAMT);
 ```
 
-The `HamtKeyHashFn` takes a `key` and a generation `gen`. The expectation is
+The `hamt_key_hash_fn` takes a `key` and a generation `gen`. The expectation is
 that the supplied hash function returns different hashes for the same key but
 different generations. Depending on the choice of hash function this can be
 implemented using `gen` as a seed or modifying a copy of `key` on the fly.
@@ -131,20 +131,20 @@ the [hashing](#hashing) section for more information on suitable hash functions.
 
 ### Memory management
 
-`libhamt` exports its internal memory management API through the `HamtAllocator`
+`libhamt` exports its internal memory management API through the `hamt_allocator`
 struct. The struct specifies the functions that the HAMT implementation uses to
 allocate, re-allocate and deallocate system memory. The API provides a default
 `hamt_allocator_default` which refers to the standard `malloc()`, `realloc()`
 and `free()` functions.
 
 ```c
-struct HamtAllocator {
+struct hamt_allocator {
     void *(*malloc)(const size_t size);
     void *(*realloc)(void *chunk, const size_t size);
     void (*free)(void *chunk);
 };
 
-extern struct HamtAllocator hamt_allocator_default;
+extern struct hamt_allocator hamt_allocator_default;
 ```
 
 Exporting the `libhamt` memory management API enables library clients to make
@@ -168,7 +168,7 @@ not exist in the HAMT.
 
 ### Iterators
 
-The API also provides key/value pair access through the `HamtIterator` struct.
+The API also provides key/value pair access through the `hamt_iterator` struct.
 ```c
 size_t hamt_size(const HAMT trie);
 const void *hamt_get(const HAMT trie, void *key);
@@ -183,14 +183,14 @@ key/value pair. In order to delete an existing and/or exhausted iterator, call
 `hamt_it_delete()`.
 
 ```c
-typedef struct HamtIteratorImpl *HamtIterator;
+typedef struct hamt_iteratorImpl *hamt_iterator;
 
-HamtIterator hamt_it_create(const HAMT trie);
-void hamt_it_delete(HamtIterator it);
-bool hamt_it_valid(HamtIterator it);
-HamtIterator hamt_it_next(HamtIterator it);
-const void *hamt_it_get_key(HamtIterator it);
-const void *hamt_it_get_value(HamtIterator it);
+hamt_iterator hamt_it_create(const HAMT trie);
+void hamt_it_delete(hamt_iterator it);
+bool hamt_it_valid(hamt_iterator it);
+hamt_iterator hamt_it_next(hamt_iterator it);
+const void *hamt_it_get_key(hamt_iterator it);
+const void *hamt_it_get_value(hamt_iterator it);
 ```
 
 Iterators maintain state about their traversal path and changes to the HAMT
@@ -315,7 +315,7 @@ int main(int argn, char *argv[])
 ### Example 2: Garbage-collected persistent HAMTs
 
 The key to making use of structural sharing is to provide `libhamt` with a
-`struct HamtAllocator` instance that implements garbage collection.
+`struct hamt_allocator` instance that implements garbage collection.
 
 The example below uses the the [Boehm-Demers-Weiser][boehm_gc] GC. For
 GC installation, compilation and linking instructions, please refer to the GC
@@ -341,7 +341,7 @@ int main(int argc, char *argv[]) {
     Set up garbage collection. We set the function pointer for `free` to
     NULL to avoid explicit freeing of memory.
     */
-    struct HamtAllocator gc_alloc = {GC_malloc, GC_realloc, nop};
+    struct hamt_allocator gc_alloc = {GC_malloc, GC_realloc, nop};
     t = hamt_create(hash_string, strcmp, &gc_alloc);
     ...
 }
@@ -369,7 +369,7 @@ iterator is valid. In every interation we print the current key/value pair to
     ...
 
     /* create iterator */
-    HamtIterator it = hamt_it_create(t);
+    hamt_iterator it = hamt_it_create(t);
     while (hamt_it_valid(it)) {
         printf("(%s, %s)\n", (char *)hamt_it_get_key(it),
                              (char *)hamt_it_get_value(it));
@@ -641,21 +641,21 @@ A solution is to wrap the two types into a `union` (and then to wrap
 the `union` into a `typedef` for convenience):
 
 ```c
-typedef struct HamtNode {
+typedef struct hamt_node {
     union {
         struct {
             void *value;
             void *key;
         } kv;
         struct {
-            struct HamtNode *ptr;
+            struct hamt_node *ptr;
             uint32_t index;
         } table;
     } as;
-} HamtNode;
+} hamt_node;
 ```
 
-With this structure, given a pointer `HamtNode *p` to a `HamtNode`
+With this structure, given a pointer `hamt_node *p` to a `hamt_node`
 instance, `p->as.kv` addresses the leaf node, and `p->as.table` addresses the
 internal node and `p->as.kv.value`, `p->as.kv.key`, `p->as.table.ptr`, and
 `p->as.table.index` provide access to the respective fields.
@@ -672,7 +672,7 @@ To maintain sanity, we define the following convenience macros:
 <p align="center">
 <img src="doc/img/hamtnode-table.png" width="450"></img>
 </p>
-<p class="image-caption"><b>Figure 2:</b> 
+<p class="image-caption"><b>Figure 2:</b>
 Memory structure of an internal node. If <code>node</code> is a pointer
 to an internal node, <code>TABLE(node)</code> (or, equivalently, <code>
 node->as.table.ptr</code>) points to the first field of the successor table.
@@ -681,7 +681,7 @@ node->as.table.ptr</code>) points to the first field of the successor table.
 ### The Anchor
 
 The `libhamt` codebase makes liberal use of the concept of an *anchor*.  An
-*anchor* is a `HamtNode*` pointer to an internal node (i.e.
+*anchor* is a `hamt_node*` pointer to an internal node (i.e.
 `is_value(VALUE(anchor))` evaluates to false). An `anchor` provides access to
 all information relevant to manage the table of child nodes: `INDEX(anchor)`
 returns the bitmap that encodes the array mapping, applying a popcount to the
@@ -692,11 +692,11 @@ popcounts. Table elements can be accessed through
 
 ### Pointer tagging
 
-The definition of `HamtNode` enables the construction of trees with a mix of
+The definition of `hamt_node` enables the construction of trees with a mix of
 internal and leaf nodes. What the definition does not provide, is a way to
-determine if a concrete `HamtNode*` pointer points to an internal or a leaf
+determine if a concrete `hamt_node*` pointer points to an internal or a leaf
 node. One solution would be to specify an `enum` that indicates the type
-(i.e. `NODE_LEAF`, etc.) and to add a `type` field to `struct HamtNode`.  While
+(i.e. `NODE_LEAF`, etc.) and to add a `type` field to `struct hamt_node`.  While
 valid, this would also increase the size of the struct by 50% just to maintain
 a single bit of information. Luckily, there is a more memory-efficient
 solution: pointer tagging.
@@ -713,8 +713,8 @@ functions:
 ```c
 #define HAMT_TAG_MASK 0x3
 #define HAMT_TAG_VALUE 0x1
-#define tagged(__p) (HamtNode *)((uintptr_t)__p | HAMT_TAG_VALUE)
-#define untagged(__p) (HamtNode *)((uintptr_t)__p & ~HAMT_TAG_MASK)
+#define tagged(__p) (hamt_node *)((uintptr_t)__p | HAMT_TAG_VALUE)
+#define untagged(__p) (hamt_node *)((uintptr_t)__p & ~HAMT_TAG_MASK)
 #define is_value(__p) (((uintptr_t)__p & HAMT_TAG_MASK) == HAMT_TAG_VALUE)
 ```
 
@@ -727,7 +727,7 @@ pointer before assigning it to `value`:
 ```
 
 Given a pointer to a leaf (e.g. a search result), we untag `value` before
-returning it: 
+returning it:
 
 ```c
     ...
@@ -751,7 +751,7 @@ And, in order to determine what we are looking at, we use `is_value`:
 
 Pointer tagging is the reason why the `value` and `key`
 fields in the `struct kv` struct are ordered the way they are.
-The `union` in `HamtNode` causes the
+The `union` in `hamt_node` causes the
 memory locations of the `struct kv` and `struct table` structs to overlap. Since
 the `table.index` field is *not* a pointer (and the bottom-three-bits-are-zero
 guarantee does not apply), its storage location cannot be used for pointer
@@ -767,7 +767,7 @@ The principal idea behing array mapping is to project a sparse bitmap index
 onto the index of a dense array, where the size of the array corresponds to
 the number of non-zero bits in the bitmap index.
 
-Given `HamtNode *p` is a valid pointer to a node, `INDEX(p)` corresponds to a
+Given `hamt_node *p` is a valid pointer to a node, `INDEX(p)` corresponds to a
 sparse bitmap index. The dense array is located at `TABLE(p)` and its size is
 determined by the [*population count*][wiki_popcount] of `INDEX(p)`.
 
@@ -799,7 +799,7 @@ Lastly, to determine if a node has a child at a particular index `index`, we
 check if the bit at that index is set in the bitmap:
 
 ```c
-static inline bool has_index(const HamtNode *anchor, size_t index)
+static inline bool has_index(const hamt_node *anchor, size_t index)
 {
     return INDEX(anchor) & (1 << index);
 }
@@ -825,7 +825,7 @@ determines the number of collisions (and hence depth extensions) we introduce.
 libary exposes a hash function signature of the form
 
 ```c
-typedef uint32_t (*HamtKeyHashFn)(const void *key, const size_t gen);
+typedef uint32_t (*hamt_key_hash_fn)(const void *key, const size_t gen);
 ```
 
 and expects users to provide a suitable function pointer as part of the call to
@@ -894,7 +894,7 @@ static uint32_t my_keyhash_string(const void *key, const size_t gen)
 For a hash trie, the number of elements in the trie is limited by the total number
 of hashes that fits into a 32-bit `uint32_t`, i.e. 2^32-1. Since the HAMT only
 uses 30 bits (in 6 chunks of 5 bits), the number of unique keys in the trie is
-limited to 2<sup>30</sup>-1 = 1,073,741,823 keys. 
+limited to 2<sup>30</sup>-1 = 1,073,741,823 keys.
 At the same time, since every layer of the
 tree uses 5 bits of the hash, the trie depth is limited to 32/5 = 6 layers.
 Neither the hard limit to the number of elements in the trie,
@@ -902,16 +902,16 @@ nor the inability to build a trie beyond depth of 6 are desirable properties.
 
 To address both issues, `libhamt` recalculates the hash with a different seed every
 6 layers. This requires a bit of state management and motivates the
-existence of the `Hash` data type and functions that operate on it:
+existence of the `hash_state` data type and functions that operate on it:
 
 ```c
-typedef struct Hash {
+typedef struct hash_state {
     const void *key;
-    HamtKeyHashFn hash_fn;
+    hamt_key_hash_fn hash_fn;
     uint32_t hash;
     size_t depth;
     size_t shift;
-} Hash;
+} hash_state;
 ```
 The struct maintains the pointers `key` to the key that is being hashed and
 `hash_fn` to the hash function used to calculate the current hash `hash`. At
@@ -922,13 +922,13 @@ The interface provides two functions: the means to step from the current 5-bit
 hash to the next in `hash_next()`; and the ability query the current index of a
 key at the current trie depth in `hash_get_index()`.
 
-`hash_next()` takes a pointer to a `Hash` instance and steps that instance
+`hash_next()` takes a pointer to a `hash_state` instance and steps that instance
 from the current to the next chunk. Taking a step involves increasing the
 `depth` and `shift`, and initiating a rehash if the `shift` indicates
 that the hash has been exhausted:
 
 ```c
-static inline Hash *hash_next(Hash *h)
+static inline hash_state *hash_next(hash_state *h)
 {
     h->depth += 1;
     h->shift += 5;
@@ -946,7 +946,7 @@ we right-shift the hash by `h->shift` to right-align the desired
 LSB and then mask with `0x11111` which equals `0x1f`:
 
 ```c
-static inline uint32_t hash_get_index(const Hash *h)
+static inline uint32_t hash_get_index(const hash_state *h)
 {
     return (h->hash >> h->shift) & 0x1f;
 }
@@ -957,7 +957,7 @@ static inline uint32_t hash_get_index(const Hash *h)
 
 In order to facilitate memory management for tables (aka the internal nodes),
 `libhamt` defines a set of helper functions. Each of these functions takes a
-`HamtAllocator` and calls the user-supplied allocation, re-allocation and
+`hamt_allocator` and calls the user-supplied allocation, re-allocation and
 deallocation functions as appropriate.
 
 We start by defining a simple memory abstraction (it would also be correct to use real functions
@@ -980,9 +980,9 @@ with a few dedicated allocation and de-allocation functions.
 the newly allocated table.
 
 ```c
-HamtNode *table_allocate(struct HamtAllocator *ator, size_t size)
+hamt_node *table_allocate(struct hamt_allocator *ator, size_t size)
 {
-    return (HamtNode *)mem_alloc(ator, (size * sizeof(HamtNode)));
+    return (hamt_node *)mem_alloc(ator, (size * sizeof(hamt_node)));
 }
 ```
 
@@ -992,7 +992,7 @@ for allocation pool management) that is currently ignored by the underlying
 `mem_free()` implementation.
 
 ```c
-void table_free(struct HamtAllocator *ator, HamtNode *ptr, size_t size)
+void table_free(struct hamt_allocator *ator, hamt_node *ptr, size_t size)
 {
     mem_free(ator, ptr);
 }
@@ -1036,20 +1036,20 @@ the new allocation, frees the old table and assignes the new table `ptr` and
 
 
 ```c
-HamtNode *table_extend(struct HamtAllocator *ator, HamtNode *anchor,
+hamt_node *table_extend(struct hamt_allocator *ator, hamt_node *anchor,
                        size_t n_rows, uint32_t index, uint32_t pos)
 {
-    HamtNode *new_table = table_allocate(ator, n_rows + 1);
+    hamt_node *new_table = table_allocate(ator, n_rows + 1);
     if (!new_table)
         return NULL;
     if (n_rows > 0) {
         /* copy over table */
-        memcpy(&new_table[0], &TABLE(anchor)[0], pos * sizeof(HamtNode));
+        memcpy(&new_table[0], &TABLE(anchor)[0], pos * sizeof(hamt_node));
         /* note: this works since (n_rows - pos) == 0 for cases
          * where we're adding the new k/v pair at the end and memcpy(a, b, 0)
          * is a nop */
         memcpy(&new_table[pos + 1], &TABLE(anchor)[pos],
-               (n_rows - pos) * sizeof(HamtNode));
+               (n_rows - pos) * sizeof(hamt_node));
     }
     table_free(ator, TABLE(anchor), n_rows);
     TABLE(anchor) = new_table;
@@ -1084,19 +1084,19 @@ right-sized table, copies the data to keep using range copies with `memcpy()`,
 frees up the old table and updates the anchor to reflect the changes.
 
 ```c
-HamtNode *table_shrink(struct HamtAllocator *ator, HamtNode *anchor,
+hamt_node *table_shrink(struct hamt_allocator *ator, hamt_node *anchor,
                        size_t n_rows, uint32_t index, uint32_t pos)
 {
-    HamtNode *new_table = NULL;
+    hamt_node *new_table = NULL;
     uint32_t new_index = 0;
     if (n_rows > 0) {
         new_table = table_allocate(ator, n_rows - 1);
         if (!new_table)
             return NULL;
         new_index = INDEX(anchor) & ~(1 << index);
-        memcpy(&new_table[0], &TABLE(anchor)[0], pos * sizeof(HamtNode));
+        memcpy(&new_table[0], &TABLE(anchor)[0], pos * sizeof(hamt_node));
         memcpy(&new_table[pos], &TABLE(anchor)[pos + 1],
-               (n_rows - pos - 1) * sizeof(HamtNode));
+               (n_rows - pos - 1) * sizeof(hamt_node));
     }
     table_free(ator, TABLE(anchor), n_rows);
     INDEX(anchor) = new_index;
@@ -1127,11 +1127,11 @@ table, copy over the key and value from the child table to the parent
 (maintaining a temporary handle on the child) and then free the child table:
 
 ```c
-HamtNode *table_gather(struct HamtAllocator *ator, HamtNode *anchor,
+hamt_node *table_gather(struct hamt_allocator *ator, hamt_node *anchor,
                        uint32_t pos)
 {
     int n_rows = get_popcount(INDEX(anchor));
-    HamtNode *table = TABLE(anchor);
+    hamt_node *table = TABLE(anchor);
     KEY(anchor) = table[pos].as.kv.key;
     VALUE(anchor) = table[pos].as.kv.value; /* already tagged */
     table_free(ator, table, n_rows);
@@ -1147,12 +1147,12 @@ that the anchor points to, allocates the required memory and performs a range
 copy using `memcpy()` to duplicate the table contents:
 
 ```c
-HamtNode *table_dup(struct HamtAllocator *ator, HamtNode *anchor)
+hamt_node *table_dup(struct hamt_allocator *ator, hamt_node *anchor)
 {
     int n_rows = get_popcount(INDEX(anchor));
-    HamtNode *new_table = table_allocate(ator, n_rows);
+    hamt_node *new_table = table_allocate(ator, n_rows);
     if (new_table) {
-        memcpy(&new_table[0], &TABLE(anchor)[0], n_rows * sizeof(HamtNode));
+        memcpy(&new_table[0], &TABLE(anchor)[0], n_rows * sizeof(hamt_node));
     }
     return new_table;
 }
@@ -1192,41 +1192,41 @@ compilation unit and wrap the function calls in a suitable fashion to maintain
 the usual, binary use-`NULL`-as-a-failure-indicator approach in the API.
 
 To model the three states, we create a suitable three-value enumaration called
-`SearchStatus`
+`search_status`
 
 ```c
 typedef enum {
     SEARCH_SUCCESS,
     SEARCH_FAIL_NOTFOUND,
     SEARCH_FAIL_KEYMISMATCH
-} SearchStatus;
+} search_status;
 ```
 
 where `SEARCH_SUCCESS` indicates that the key in question was
 found, `SEARCH_FAIL_NOTFOUND` indicates a search failure due to a missing key,
-an `SEARCH_FAIL_KEYMISMATCH` signals a hash conflict. 
+and `SEARCH_FAIL_KEYMISMATCH` signals a hash conflict.
 
-We also declare the return value of the internal search function to be a `SearchResult`:
+We also declare the return value of the internal search function to be a `search_result`:
 
 ```c
-static SearchResult search_recursive(...)
+static search_result search_recursive(...)
 {
     // ...
 }
 ```
 
-`SearchResult` is a bit more heavy-weight: beyond the
+`search_result` is a bit more heavy-weight: beyond the
 search status it also returns a pointer to the current anchor, a pointer to the
 value in the table that belongs to that anchor, and a convenience pointer to
 the hash that was used to search (and possibly find) the key:
 
 ```c
-typedef struct SearchResult {
-    SearchStatus status;
-    HamtNode *anchor;
-    HamtNode *value;
-    Hash *hash;
-} SearchResult;
+typedef struct search_result {
+    search_status status;
+    hamt_node *anchor;
+    hamt_node *value;
+    hash_state *hash;
+} search_result;
 ```
 Here, `anchor` always points to the anchor at which the search was terminated;
 if the search was successful, `value` points to the table row that holds the
@@ -1241,7 +1241,7 @@ algorithm.
 Conceptually, the approach is
 
 1. Prerequisites: pointer to an anchor, the key to look for
-2. Create valid `Hash` object from the key
+2. Create valid `hash_state` object from the key
 3. Fundamental algorithm is recursive
    1. look at index bitmap of the anchor: is the bit for the hash set?
    2. if no, terminate search, return FAIL_NOTFOUND

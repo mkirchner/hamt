@@ -16,7 +16,7 @@
  * @param node Pointer to the anchor node
  * @param depth Tree depth as a parameter
  */
-static void debug_print_string(size_t ix, const HamtNode *node, size_t depth)
+static void debug_print_string(size_t ix, const hamt_node *node, size_t depth)
 {
     /* print node*/
     if (!is_value(node->as.kv.value)) {
@@ -78,8 +78,8 @@ MU_TEST_CASE(test_compact_index)
 MU_TEST_CASE(test_tagging)
 {
     printf(". testing pointer tagging\n");
-    HamtNode n;
-    HamtNode *p = &n;
+    hamt_node n;
+    hamt_node *p = &n;
     MU_ASSERT(!is_value(p), "Raw pointer must not be tagged");
     p = tagged(p);
     MU_ASSERT(is_value(p),
@@ -182,19 +182,19 @@ MU_TEST_CASE(test_search)
 
     int values[] = {0, 2, 4, 7, 8};
 
-    HamtNode *t_8 = (HamtNode *)calloc(sizeof(HamtNode), 2);
+    hamt_node *t_8 = (hamt_node *)calloc(sizeof(hamt_node), 2);
     t_8[0].as.kv.key = &keys[2];
     t_8[0].as.kv.value = tagged(&values[2]);
     t_8[1].as.kv.key = &keys[3];
     t_8[1].as.kv.value = tagged(&values[3]);
 
-    HamtNode *t_23 = (HamtNode *)calloc(sizeof(HamtNode), 2);
+    hamt_node *t_23 = (hamt_node *)calloc(sizeof(hamt_node), 2);
     t_23[0].as.kv.key = &keys[4];
     t_23[0].as.kv.value = tagged(&values[4]);
     t_23[1].as.kv.key = &keys[1];
     t_23[1].as.kv.value = tagged(&values[1]);
 
-    HamtNode *t_root = (HamtNode *)calloc(sizeof(HamtNode), 3);
+    hamt_node *t_root = (hamt_node *)calloc(sizeof(hamt_node), 3);
     t_root[0].as.table.index = (1 << 4) | (1 << 17);
     t_root[0].as.table.ptr = t_8;
     t_root[1].as.table.index = (1 << 0) | (1 << 16);
@@ -202,16 +202,16 @@ MU_TEST_CASE(test_search)
     t_root[2].as.kv.key = &keys[0];
     t_root[2].as.kv.value = tagged(&values[0]);
 
-    struct HamtImpl t;
+    struct hamt_impl t;
     t.key_cmp = my_strncmp_1;
     t.ator = &hamt_allocator_default;
-    t.root = mem_alloc(t.ator, sizeof(HamtNode));
+    t.root = mem_alloc(t.ator, sizeof(hamt_node));
     t.root->as.table.index = (1 << 8) | (1 << 23) | (1 << 31);
     t.root->as.table.ptr = t_root;
 
     struct {
         char *key;
-        SearchStatus expected_status;
+        search_status expected_status;
         int expected_value;
     } test_cases[10] = {
         {"0", SEARCH_SUCCESS, 0},       {"1", SEARCH_FAIL_NOTFOUND, 0},
@@ -221,13 +221,14 @@ MU_TEST_CASE(test_search)
         {"8", SEARCH_SUCCESS, 8},       {"c", SEARCH_FAIL_KEYMISMATCH, 0}};
 
     for (size_t i = 0; i < 10; ++i) {
-        Hash *hash = &(Hash){.key = test_cases[i].key,
-                             .hash_fn = my_hash_1,
-                             .hash = my_hash_1(test_cases[i].key, 0),
-                             .depth = 0,
-                             .shift = 0};
-        SearchResult sr = search_recursive(t.root, hash, my_strncmp_1,
-                                           test_cases[i].key, NULL, t.ator);
+        hash_state *hash =
+            &(hash_state){.key = test_cases[i].key,
+                          .hash_fn = my_hash_1,
+                          .hash = my_hash_1(test_cases[i].key, 0),
+                          .depth = 0,
+                          .shift = 0};
+        search_result sr = search_recursive(t.root, hash, my_strncmp_1,
+                                            test_cases[i].key, NULL, t.ator);
         MU_ASSERT(sr.status == test_cases[i].expected_status,
                   "Unexpected search result status");
         if (test_cases[i].expected_status == SEARCH_SUCCESS) {
@@ -252,14 +253,14 @@ MU_TEST_CASE(test_search)
 MU_TEST_CASE(test_set_with_collisions)
 {
     printf(". testing set/insert w/ forced key collision\n");
-    struct HamtImpl *t =
+    struct hamt_impl *t =
         hamt_create(my_hash_1, my_strncmp_1, &hamt_allocator_default);
 
     /* example 1: no hash collisions */
     char keys[] = "028";
     int values[] = {0, 2, 8};
 
-    HamtNode *t_root = (HamtNode *)calloc(sizeof(HamtNode), 3);
+    hamt_node *t_root = (hamt_node *)calloc(sizeof(hamt_node), 3);
     t_root[0].as.kv.key = &keys[0];
     t_root[0].as.kv.value = tagged(&values[0]);
     t_root[1].as.kv.key = &keys[1];
@@ -269,15 +270,15 @@ MU_TEST_CASE(test_set_with_collisions)
     t->root->as.table.index = (1 << 23) | (1 << 31);
 
     /* insert value and find it again */
-    const HamtNode *new_node =
+    const hamt_node *new_node =
         set(t, t->root, t->key_hash, t->key_cmp, &keys[2], &values[2]);
-    Hash *hash = &(Hash){.key = &keys[2],
-                         .hash_fn = t->key_hash,
-                         .hash = t->key_hash(&keys[2], 0),
-                         .depth = 0,
-                         .shift = 0};
-    SearchResult sr = search_recursive(t->root, hash, t->key_cmp, &keys[2],
-                                       NULL, &hamt_allocator_default);
+    hash_state *hash = &(hash_state){.key = &keys[2],
+                                     .hash_fn = t->key_hash,
+                                     .hash = t->key_hash(&keys[2], 0),
+                                     .depth = 0,
+                                     .shift = 0};
+    search_result sr = search_recursive(t->root, hash, t->key_cmp, &keys[2],
+                                        NULL, &hamt_allocator_default);
     MU_ASSERT(sr.status == SEARCH_SUCCESS, "failed to find inserted value");
     MU_ASSERT(new_node == sr.value, "Query result points to the wrong node");
     hamt_delete(t);
@@ -294,20 +295,20 @@ MU_TEST_CASE(test_set_whole_enchilada_00)
         int value;
     } data[5] = {{'0', 0}, {'2', 2}, {'4', 4}, {'7', 7}, {'8', 8}};
 
-    struct HamtImpl *t =
+    struct hamt_impl *t =
         hamt_create(my_hash_1, my_strncmp_1, &hamt_allocator_default);
     for (size_t i = 0; i < 5; ++i) {
         set(t, t->root, t->key_hash, t->key_cmp, &data[i].key, &data[i].value);
     }
 
     for (size_t i = 0; i < 5; ++i) {
-        Hash *hash = &(Hash){.key = &data[i].key,
-                             .hash_fn = t->key_hash,
-                             .hash = t->key_hash(&data[i].key, 0),
-                             .depth = 0,
-                             .shift = 0};
-        SearchResult sr = search_recursive(t->root, hash, t->key_cmp,
-                                           &data[i].key, NULL, t->ator);
+        hash_state *hash = &(hash_state){.key = &data[i].key,
+                                         .hash_fn = t->key_hash,
+                                         .hash = t->key_hash(&data[i].key, 0),
+                                         .depth = 0,
+                                         .shift = 0};
+        search_result sr = search_recursive(t->root, hash, t->key_cmp,
+                                            &data[i].key, NULL, t->ator);
         MU_ASSERT(sr.status == SEARCH_SUCCESS, "failed to find inserted value");
         int *value = (int *)untagged(sr.value->as.kv.value);
         MU_ASSERT(value, "found value is NULL");
@@ -353,8 +354,8 @@ MU_TEST_CASE(test_set_stringkeys)
     } data[6] = {{"humpty", 1}, {"dumpty", 2}, {"sat", 3},
                  {"on", 4},     {"the", 5},    {"wall", 6}};
 
-    struct HamtImpl *t = hamt_create(my_keyhash_string, my_keycmp_string,
-                                     &hamt_allocator_default);
+    struct hamt_impl *t = hamt_create(my_keyhash_string, my_keycmp_string,
+                                      &hamt_allocator_default);
     for (size_t i = 0; i < 6; ++i) {
         // printf("setting (%s, %d)\n", data[i].key, data[i].value);
         set(t, t->root, t->key_hash, t->key_cmp, data[i].key, &data[i].value);
@@ -363,13 +364,13 @@ MU_TEST_CASE(test_set_stringkeys)
 
     for (size_t i = 0; i < 6; ++i) {
         // printf("querying (%s, %d)\n", data[i].key, data[i].value);
-        Hash *hash = &(Hash){.key = data[i].key,
-                             .hash_fn = t->key_hash,
-                             .hash = t->key_hash(data[i].key, 0),
-                             .depth = 0,
-                             .shift = 0};
-        SearchResult sr = search_recursive(t->root, hash, t->key_cmp,
-                                           data[i].key, NULL, t->ator);
+        hash_state *hash = &(hash_state){.key = data[i].key,
+                                         .hash_fn = t->key_hash,
+                                         .hash = t->key_hash(data[i].key, 0),
+                                         .depth = 0,
+                                         .shift = 0};
+        search_result sr = search_recursive(t->root, hash, t->key_cmp,
+                                            data[i].key, NULL, t->ator);
         MU_ASSERT(sr.status == SEARCH_SUCCESS, "failed to find inserted value");
         int *value = (int *)untagged(sr.value->as.kv.value);
         MU_ASSERT(value, "found value is NULL");
@@ -404,12 +405,12 @@ MU_TEST_CASE(test_aspell_dict_en)
 
     /* Check if "bluism" has search depth 7 */
     char target[] = "bluism";
-    Hash *hash = &(Hash){.key = target,
-                         .hash_fn = my_keyhash_string,
-                         .hash = my_keyhash_string(target, 0),
-                         .depth = 0,
-                         .shift = 0};
-    SearchResult sr =
+    hash_state *hash = &(hash_state){.key = target,
+                                     .hash_fn = my_keyhash_string,
+                                     .hash = my_keyhash_string(target, 0),
+                                     .depth = 0,
+                                     .shift = 0};
+    search_result sr =
         search_recursive(t->root, hash, t->key_cmp, target, NULL, t->ator);
     MU_ASSERT(sr.status == SEARCH_SUCCESS, "fail");
     char *value = (char *)untagged(sr.value->as.kv.value);
@@ -435,10 +436,10 @@ MU_TEST_CASE(test_shrink_table)
         {"0", 0, 1}, {"2", 2, 3}, {"4", 4, 4}, {"7", 7, 12}, {"8", 8, 22}};
 
     /* create table w/ 5 entries and delete each position */
-    HamtNode *a0;
+    hamt_node *a0;
     for (size_t delete_pos = 0; delete_pos < N; delete_pos++) {
-        a0 = mem_alloc(&hamt_allocator_default, sizeof(HamtNode));
-        memset(a0, 0, sizeof(HamtNode));
+        a0 = mem_alloc(&hamt_allocator_default, sizeof(hamt_node));
+        memset(a0, 0, sizeof(hamt_node));
         TABLE(a0) = table_allocate(&hamt_allocator_default, N);
         for (size_t i = 0; i < N; ++i) {
             INDEX(a0) |= (1 << data[i].index);
@@ -478,7 +479,7 @@ MU_TEST_CASE(test_gather_table)
         int index;
     } data[N] = {{"0", 0, 1}, {"2", 2, 3}};
 
-    HamtNode *a0 = mem_alloc(&hamt_allocator_default, sizeof(HamtNode));
+    hamt_node *a0 = mem_alloc(&hamt_allocator_default, sizeof(hamt_node));
     a0->as.table.index = 0;
     a0->as.table.ptr = table_allocate(&hamt_allocator_default, N);
     for (size_t i = 0; i < N; ++i) {
@@ -487,7 +488,7 @@ MU_TEST_CASE(test_gather_table)
         a0->as.table.ptr[i].as.kv.value = tagged(&data[i].value);
     }
 
-    HamtNode *a1 = table_gather(&hamt_allocator_default, a0, 0);
+    hamt_node *a1 = table_gather(&hamt_allocator_default, a0, 0);
 
     MU_ASSERT(a1->as.kv.key == data[0].key, "wrong key in gather");
     MU_ASSERT(untagged(a1->as.kv.value) == (void *)&data[0].value,
@@ -506,8 +507,8 @@ MU_TEST_CASE(test_remove)
     } data[N] = {{"humpty", 1}, {"dumpty", 2}, {"sat", 3},
                  {"on", 4},     {"the", 5},    {"wall", 6}};
 
-    struct HamtImpl *t = hamt_create(my_keyhash_string, my_keycmp_string,
-                                     &hamt_allocator_default);
+    struct hamt_impl *t = hamt_create(my_keyhash_string, my_keycmp_string,
+                                      &hamt_allocator_default);
 
     for (size_t k = 0; k < 3; ++k) {
         for (size_t i = 0; i < N; ++i) {
@@ -515,12 +516,13 @@ MU_TEST_CASE(test_remove)
                 &data[i].value);
         }
         for (size_t i = 0; i < N; ++i) {
-            Hash *hash = &(Hash){.key = data[i].key,
-                                 .hash_fn = t->key_hash,
-                                 .hash = t->key_hash(data[i].key, 0),
-                                 .depth = 0,
-                                 .shift = 0};
-            PathResult pr =
+            hash_state *hash =
+                &(hash_state){.key = data[i].key,
+                              .hash_fn = t->key_hash,
+                              .hash = t->key_hash(data[i].key, 0),
+                              .depth = 0,
+                              .shift = 0};
+            path_result pr =
                 rem(t->root, t->root, hash, t->key_cmp, data[i].key, t->ator);
             MU_ASSERT(pr.rr.status == REMOVE_SUCCESS ||
                           pr.rr.status == REMOVE_GATHERED,
@@ -536,7 +538,7 @@ MU_TEST_CASE(test_remove)
 MU_TEST_CASE(test_create_delete)
 {
     printf(". testing create/delete cycle\n");
-    struct HamtImpl *t;
+    struct hamt_impl *t;
     t = hamt_create(my_keyhash_string, my_keycmp_string,
                     &hamt_allocator_default);
     hamt_delete(t);
@@ -558,7 +560,7 @@ MU_TEST_CASE(test_create_delete)
 MU_TEST_CASE(test_size)
 {
     printf(". testing tree size tracking\n");
-    struct HamtImpl *t;
+    struct hamt_impl *t;
     t = hamt_create(my_keyhash_string, my_keycmp_string,
                     &hamt_allocator_default);
     enum { N = 6 };
@@ -582,7 +584,7 @@ MU_TEST_CASE(test_size)
 MU_TEST_CASE(test_iterators)
 {
     printf(". testing iterators\n");
-    struct HamtImpl *t;
+    struct hamt_impl *t;
 
     struct {
         char *key;
@@ -601,7 +603,7 @@ MU_TEST_CASE(test_iterators)
 
     /* test create/delete */
 
-    HamtIterator it = hamt_it_create(t);
+    hamt_iterator it = hamt_it_create(t);
     hamt_it_next(it);
     MU_ASSERT(it->cur == NULL, "iteration fail for empty trie");
     hamt_it_delete(it);
@@ -637,9 +639,9 @@ MU_TEST_CASE(test_persistent_set)
     } data[6] = {{"humpty", 1}, {"dumpty", 2}, {"sat", 3},
                  {"on", 4},     {"the", 5},    {"wall", 6}};
 
-    struct HamtImpl *t = hamt_create(my_keyhash_string, my_keycmp_string,
-                                     &hamt_allocator_default);
-    struct HamtImpl *tmp = t;
+    struct hamt_impl *t = hamt_create(my_keyhash_string, my_keycmp_string,
+                                      &hamt_allocator_default);
+    struct hamt_impl *tmp = t;
     for (size_t i = 0; i < 6; ++i) {
         tmp = hamt_pset(t, data[i].key, &data[i].value);
         MU_ASSERT(hamt_size(tmp) == hamt_size(t) + 1, "wrong trie size");
@@ -687,12 +689,12 @@ MU_TEST_CASE(test_persistent_aspell_dict_en)
 
     /* Check if "bluism" has search depth 7 */
     char target[] = "bluism";
-    Hash *hash = &(Hash){.key = target,
-                         .hash_fn = my_keyhash_string,
-                         .hash = my_keyhash_string(target, 0),
-                         .depth = 0,
-                         .shift = 0};
-    SearchResult sr =
+    hash_state *hash = &(hash_state){.key = target,
+                                     .hash_fn = my_keyhash_string,
+                                     .hash = my_keyhash_string(target, 0),
+                                     .depth = 0,
+                                     .shift = 0};
+    search_result sr =
         search_recursive(t->root, hash, t->key_cmp, target, NULL, t->ator);
     MU_ASSERT(sr.status == SEARCH_SUCCESS, "fail");
     char *value = (char *)untagged(sr.value->as.kv.value);
