@@ -1237,20 +1237,77 @@ unsuccessful because the key did not exist, `value` equals `NULL`.
 With these prerequisites out of the way, we can tackle the actual search
 algorithm.
 
-
 Conceptually, the approach is
 
-1. Prerequisites: pointer to an anchor, the key to look for
-2. Create valid `hash_state` object from the key
-3. Fundamental algorithm is recursive
-   1. look at index bitmap of the anchor: is the bit for the hash set?
-   2. if no, terminate search, return FAIL_NOTFOUND
-   3. if yes, check the type of the entry at the expected index/position: is it
-      a value?
-      1. if yes, compare the keys. Do they match?
-         1. if yes, return SUCCESS
-         2. if no, return FAIL_KEYMISMATCH
-      2. if no, it must be a table. Make the table the new anchor and recurse
+        search_recursive(anchor, hash, eq, key):
+            determine the expected index of the key in TABLE(anchor)
+            if INDEX(anchor) has the expected index set:
+                if TABLE(anchor)[expected index] is a value:
+                    if eq(key, KEY(TABLE(anchor)[expected index]):
+                        return SEARCH_SUCCESS
+                    else:
+                        return SEARCH_FAIL_KEYMISMATCH
+                else:
+                    search_recursive(TABLE(anchor)[expected index],
+                                     hash_next(hash), eq, key)
+            else:
+                return SEARCH_FAIL_NOTFOUND
+
+The implementation closely mimicks that logic:
+
+
+```c
+static search_result search_recursive(hamt_node *anchor, hash_state *hash,
+                                      hamt_cmp_fn cmp_eq, const void *key,
+                                      hamt_node *path,
+                                      struct hamt_allocator *ator)
+{
+    hamt_node *copy = path;
+    if (path) {
+        /* copy the table we're pointing to */
+        TABLE(copy) = table_dup(ator, anchor);
+        INDEX(copy) = INDEX(anchor);
+    } else {
+        copy = anchor;
+    }
+
+    /* determine the expected index in table */
+    uint32_t expected_index = hash_get_index(hash);
+    /* check if the expected index is set */
+    if (has_index(copy, expected_index)) {
+        /* if yes, get the compact index to address the array */
+        int pos = get_pos(expected_index, INDEX(copy));
+        /* index into the table and check what type of entry we're looking at */
+        hamt_node *next = &TABLE(copy)[pos];
+        if (is_value(VALUE(next))) {
+            if ((*cmp_eq)(key, KEY(next)) == 0) {
+                /* keys match */
+                search_result result = {.status = SEARCH_SUCCESS,
+                                        .anchor = copy,
+                                        .value = next,
+                                        .hash = hash};
+                return result;
+            }
+            /* not found: same hash but different key */
+            search_result result = {.status = SEARCH_FAIL_KEYMISMATCH,
+                                    .anchor = copy,
+                                    .value = next,
+                                    .hash = hash};
+            return result;
+        } else {
+            /* For table entries, recurse to the next level */
+            return search_recursive(next, hash_next(hash), cmp_eq, key,
+                                    path ? next : NULL, ator);
+        }
+    }
+    /* expected index is not set, terminate search */
+    search_result result = {.status = SEARCH_FAIL_NOTFOUND,
+                            .anchor = copy,
+                            .value = NULL,
+                            .hash = hash};
+    return result;
+}
+```
 
 ### Insert
 
