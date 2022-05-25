@@ -599,24 +599,24 @@ void hamt_delete(HAMT h)
 
 size_t hamt_size(const HAMT trie) { return trie->size; }
 
-struct hamt_iteratorItem {
+struct hamt_iterator_item {
     hamt_node *anchor;
     size_t pos;
-    struct hamt_iteratorItem *next;
+    struct hamt_iterator_item *next;
 };
 
 struct hamt_iterator_impl {
     HAMT trie;
     hamt_node *cur;
-    struct hamt_iteratorItem *head, *tail;
+    struct hamt_iterator_item *head, *tail;
 };
 
-static struct hamt_iteratorItem *
+static struct hamt_iterator_item *
 iterator_push_item(hamt_iterator it, hamt_node *anchor, size_t pos)
 {
     /* append at the end */
-    struct hamt_iteratorItem *new_item =
-        mem_alloc(it->trie->ator, sizeof(struct hamt_iteratorItem));
+    struct hamt_iterator_item *new_item =
+        mem_alloc(it->trie->ator, sizeof(struct hamt_iterator_item));
     if (new_item) {
         new_item->anchor = anchor;
         new_item->pos = pos;
@@ -631,15 +631,15 @@ iterator_push_item(hamt_iterator it, hamt_node *anchor, size_t pos)
     return new_item;
 }
 
-static struct hamt_iteratorItem *iterator_peek_item(hamt_iterator it)
+static struct hamt_iterator_item *iterator_peek_item(hamt_iterator it)
 {
     return it->head;
 }
 
-static struct hamt_iteratorItem *iterator_pop_item(hamt_iterator it)
+static struct hamt_iterator_item *iterator_pop_item(hamt_iterator it)
 {
     /* pop from front */
-    struct hamt_iteratorItem *top = it->head;
+    struct hamt_iterator_item *top = it->head;
     it->head = it->head->next;
     return top;
 }
@@ -659,8 +659,8 @@ hamt_iterator hamt_it_create(const HAMT trie)
 
 void hamt_it_delete(hamt_iterator it)
 {
-    struct hamt_iteratorItem *p = it->head;
-    struct hamt_iteratorItem *tmp;
+    struct hamt_iterator_item *p = it->head;
+    struct hamt_iterator_item *tmp;
     while (p) {
         tmp = p;
         p = p->next;
@@ -673,7 +673,7 @@ inline bool hamt_it_valid(hamt_iterator it) { return it->cur != NULL; }
 
 hamt_iterator hamt_it_next(hamt_iterator it)
 {
-    struct hamt_iteratorItem *p;
+    struct hamt_iterator_item *p;
     while (it && (p = iterator_peek_item(it)) != NULL) {
         int n_rows = get_popcount(INDEX(p->anchor));
         for (int i = p->pos; i < n_rows; ++i) {
