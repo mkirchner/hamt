@@ -5,21 +5,21 @@
 #include <stddef.h>
 #include <stdint.h>
 
-typedef int (*HamtCmpFn)(const void *lhs, const void *rhs);
-typedef uint32_t (*HamtKeyHashFn)(const void *key, const size_t gen);
+typedef int (*hamt_cmp_fn)(const void *lhs, const void *rhs);
+typedef uint32_t (*hamt_key_hash_fn)(const void *key, const size_t gen);
 
-typedef struct HamtImpl *HAMT;
+typedef struct hamt_impl *HAMT;
 
-struct HamtAllocator {
+struct hamt_allocator {
     void *(*malloc)(const size_t size);
     void *(*realloc)(void *chunk, const size_t size);
     void (*free)(void *chunk);
 };
 
-extern struct HamtAllocator hamt_allocator_default;
+extern struct hamt_allocator hamt_allocator_default;
 
-HAMT hamt_create(HamtKeyHashFn key_hash, HamtCmpFn key_cmp,
-                 struct HamtAllocator *ator);
+HAMT hamt_create(hamt_key_hash_fn key_hash, hamt_cmp_fn key_cmp,
+                 struct hamt_allocator *ator);
 void hamt_delete(HAMT);
 
 const void *hamt_get(const HAMT trie, void *key);
@@ -29,13 +29,13 @@ void *hamt_remove(HAMT trie, void *key);
 const HAMT hamt_premove(const HAMT trie, void *key);
 size_t hamt_size(const HAMT trie);
 
-typedef struct HamtIteratorImpl *HamtIterator;
+typedef struct hamt_iteratorImpl *hamt_iterator;
 
-HamtIterator hamt_it_create(const HAMT trie);
-void hamt_it_delete(HamtIterator it);
-bool hamt_it_valid(HamtIterator it);
-HamtIterator hamt_it_next(HamtIterator it);
-const void *hamt_it_get_key(HamtIterator it);
-const void *hamt_it_get_value(HamtIterator it);
+hamt_iterator hamt_it_create(const HAMT trie);
+void hamt_it_delete(hamt_iterator it);
+bool hamt_it_valid(hamt_iterator it);
+hamt_iterator hamt_it_next(hamt_iterator it);
+const void *hamt_it_get_key(hamt_iterator it);
+const void *hamt_it_get_value(hamt_iterator it);
 
 #endif /* HAMT_H */
