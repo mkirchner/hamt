@@ -1254,23 +1254,24 @@ In pseudocode:
                         return SEARCH_SUCCESS
                     else:
                         return SEARCH_FAIL_KEYMISMATCH
-                else:
-                    /* recursively continue the search */
-                    search_recursive(TABLE(anchor)[expected index],
-                                     hash_next(hash), eq, key)
+                else (i.e. it holds a sub-table):
+                    search_recursive(sub-table, hash_next(hash), eq, key)
             else:
                 return SEARCH_FAIL_NOTFOUND
 
-How do we *test for presence in the current subtree*? Standard hash
-trie search! First, given the current trie level, determine the current 5-bit
-sub-hash and interpret the value as an integer:
+The key step here is *testing for presence in the current subtree*. This can
+be accomplished by standard hash trie search.
+
+First, given the current trie
+level, determine the current 5-bit sub-hash and interpret the value as an
+integer:
 
 ```c
 uint32_t expected_index = hash_get_index(hash);
 ```
 
 where the trie level (and hash exhaustion) is managed by `struct hash_state`
-and its helper functions.
+and its helper functions as described [above](#hashing).
 
 Second, check if the `expected_index` is set in the current table:
 
@@ -1280,7 +1281,17 @@ Second, check if the `expected_index` is set in the current table:
     }
 ```
 
-The above lines are verbatime copies from the fill implementation:
+where `has_index()` is a simple helper function that simply checks if the bit
+at `expected_index` is set in the `INDEX(anchor)` bitfield:
+
+```c
+static inline bool has_expected_index(const hamt_node *anchor, size_t expected_index)
+{
+    return INDEX(anchor) & (1 << expected_index);
+}
+```
+
+The above lines are verbatim copies from the full implementation:
 
 ```c
 static search_result search_recursive(hamt_node *anchor, hash_state *hash,
@@ -1312,8 +1323,7 @@ static search_result search_recursive(hamt_node *anchor, hash_state *hash,
             return result;
         } else {
             /* For table entries, recurse to the next level */
-            return search_recursive(next, hash_next(hash), cmp_eq, key,
-                                    path ? next : NULL, ator);
+            return search_recursive(next, hash_next(hash), cmp_eq, key);
         }
     }
     /* Not found: expected index is not set, key does not exist */
