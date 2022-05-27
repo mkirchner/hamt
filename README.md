@@ -1245,18 +1245,12 @@ The basic idea is to start from the root of the HAMT and then, at every level,
 test if the current sub-hash of the key is present in the current subtree. If yes, either
 return a value or move down another level into the trie; if no, bail.
 
-The key operation here is *testing for presence in the current subtree*. This
-is accomplished in the following manner:
-
-* Given the hash of the key and the hash state, determine the 5-bit sub-hash
-  active for the current trie level
-* Interpret that 5-bit value as a position in [0,31]
-* Test if the bitmap index bit at that position is set for the current table
+In pseudocode:
 
         search_recursive(anchor, hash, eq, key):
-            if the sub-hash is present in the current sub-trie:
-                if TABLE(anchor) holds a value at the expected index:
-                    if the key of the value at the expected index matches the search key:
+            if the key may be present in the current sub-trie:
+                if the current table holds a key/value pair at the expected index:
+                    if the key matches the search key:
                         return SEARCH_SUCCESS
                     else:
                         return SEARCH_FAIL_KEYMISMATCH
@@ -1267,7 +1261,26 @@ is accomplished in the following manner:
             else:
                 return SEARCH_FAIL_NOTFOUND
 
-The implementation closely mimicks that logic:
+How do we *test for presence in the current subtree*? Standard hash
+trie search! First, given the current trie level, determine the current 5-bit
+sub-hash and interpret the value as an integer:
+
+```c
+uint32_t expected_index = hash_get_index(hash);
+```
+
+where the trie level (and hash exhaustion) is managed by `struct hash_state`
+and its helper functions.
+
+Second, check if the `expected_index` is set in the current table:
+
+```c
+    if (has_index(anchor, expected_index)) {
+    ...
+    }
+```
+
+The above lines are verbatime copies from the fill implementation:
 
 ```c
 static search_result search_recursive(hamt_node *anchor, hash_state *hash,
