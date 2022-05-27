@@ -1160,7 +1160,20 @@ hamt_node *table_dup(struct hamt_allocator *ator, hamt_node *anchor)
 
 ## Putting it all together
 
+### Example
+
+| key | hash     | binary hash                            | 5-bit ints           |
+|-----|----------|----------------------------------------|----------------------|
+| "0" | d271c07f | 11 01001 00111 00011 10000 00011 11111 | [ 31  3 16  3  7 9 ] |
+| "2" | 0129e217 | 00 00000 10010 10011 11000 10000 10111 | [ 23 16 24 19 18 0 ] |
+| "4" | e131cc88 | 11 10000 10011 00011 10011 00100 01000 | [  8  4 19 3 19 16 ] |
+| "7" | 23ea8628 | 00 10001 11110 10101 00001 10001 01000 | [  8 17 1 21 30 17 ] |
+| "8" | bd920017 | 10 11110 11001 00100 00000 00000 10111 | [ 23 0  0  4 25 30 ] |
+
 ### Search
+
+* How does search in a HAMT work? Walk through a basic example
+
 
 Search plays a double role: finding a HAMT entry is a fundamental part of the
 HAMT interface (exposed by `hamt_get()`); and the first step in the insert and remove
