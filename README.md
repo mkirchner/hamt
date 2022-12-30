@@ -1160,39 +1160,61 @@ hamt_node *table_dup(struct hamt_allocator *ator, hamt_node *anchor)
 
 ## Putting it all together
 
-### Search
+The following subsections detail the implementations of search, insertion and
+removal of key/value pairs in our HAMT implementation. Note that, while the
+implementations shown here have been thoroughly tested and are deemed correct,
+they may have been replaced by faster or more capable implementations in the
+actual `libhamt` source. An attempt is being made to keep this section up to
+date with the actual implementation but the choice here is in favor of
+conceptual clarity and will not necessarily cover every implementation detail.
+PRs welcome.
 
-Search is a multi-use tool. It is required for item
-retrieval (i.e. the implementation of `hamt_get()`) and to find the
-anchors on which the insert and remove functionality will operate.
-It is desirable to approach the search implementation from a slightly more generic
-perspective such that we do not need to re-invent the wheel for every use case.
+### Example data
 
-The key observation for the HAMT is that search results have three possible
-outcomes and that it is benficial to maintain ternary logic in the internal interfaces
-(i.e. avoid limiting ourselves to binary `NULL` vs. non-`NULL` return values).
+| key | key hash | binary key hash                          | 5-bit ints           |
+|-----|----------|------------------------------------------|----------------------|
+| "0" | d271c07f | `11 01001 00111 00011 10000 00011 11111` | [ 31  3 16  3  7 9 ] |
+| "2" | 0129e217 | `00 00000 10010 10011 11000 10000 10111` | [ 23 16 24 19 18 0 ] |
+| "4" | e131cc88 | `11 10000 10011 00011 10011 00100 01000` | [  8  4 19 3 19 16 ] |
+| "7" | 23ea8628 | `00 10001 11110 10101 00001 10001 01000` | [  8 17 1 21 30 17 ] |
+| "8" | bd920017 | `10 11110 11001 00100 00000 00000 10111` | [ 23 0  0  4 25 30 ] |
 
+### Search: internal API
 
-When we search for a key in the HAMT, there
-are two fundamental outcomes: the key is either there, or it is not (note that these are
-exactly the semantics of the user-facing `hamt_get()` function: it either
-returns a pointer to the value stored under the key or it returns `NULL`).
-Looking closer, searches can fail for two reasons:
-the search can be unsuccessful because a key does not exist in the
-HAMT *or* it can be unsuccessful because there is a key value pair that happens
-to have the same partial hash but a different key (i.e. the hash has not been
-sufficiently exhausted to differentiate between the two keys).
+Search plays a double role: finding a HAMT entry is a fundamental part of the
+HAMT interface (exposed by `hamt_get()`); and the first step in the insert and remove
+functions is finding the anchors to operate on.
 
-While the distinction is trifling from the existential perspective,
-the different cases call for different strategies when inserting data into
-the tree (see below).
+It is therefore desirable to approach the search implementation from a
+more generic perspective such that we do not need to re-invent the
+wheel for each of these use cases. We therefore define an internal search
+function
 
-As a consequence, we will be using a ternary value approach inside the `hamt.c`
-compilation unit and wrap the function calls in a suitable fashion to maintain
-the usual, binary use-`NULL`-as-a-failure-indicator approach in the API.
+```c
+static ... search_recursive(...);
+```
 
-To model the three states, we create a suitable three-value enumaration called
-`search_status`
+that is called from internal and the API functions alike. As the
+name implies, we implement search in a recursive manner (this is for clarity;
+conversion to an iterative solution is straightforward).
+
+When we search for a key in the HAMT, there are two fundamental outcomes: the
+key is either there, or it is not (note that these are exactly the semantics
+of the user-facing `hamt_get()` function: it either returns a pointer to the
+value stored under the key or it returns `NULL`). However, looking more
+closely, searches can fail for two reasons: the search can be unsuccessful
+because a key does not exist in the HAMT *or* it can be unsuccessful because
+there is a key value pair that happens to have the same partial hash but a
+different key (i.e. there is a hash collission or the hash has not been
+sufficiently exhausted to differentiate between the two keys).  And each of
+these three cases is meaningful (the latter two corresponding directly to the
+two different insertion strategies described below).
+
+A good approach here is to define a ternary return value (as opposed to
+the usual, binary use-`NULL`-as-a-failure-indicator approach that is often
+prevalent in C code) to allow us to signal each of these cases clearly.
+
+We create a suitable three-value `enum` called `search_status`
 
 ```c
 typedef enum {
@@ -1206,51 +1228,239 @@ where `SEARCH_SUCCESS` indicates that the key in question was
 found, `SEARCH_FAIL_NOTFOUND` indicates a search failure due to a missing key,
 and `SEARCH_FAIL_KEYMISMATCH` signals a hash conflict.
 
-We also declare the return value of the internal search function to be a `search_result`:
+In order to return the result of a search (and not only its status), we
+introduce a search result data type that is a bit more heavy-weight:
 
 ```c
-static search_result search_recursive(...)
+struct search_result {
+    search_status status;
+    hamt_node *anchor;
+    hamt_node *value;
+    hash_state *hash;
+};
+```
+Here, `anchor` always points to the anchor at which the search was terminated;
+if the search was successful, `value` points to the table row that holds the
+key/value pair with matching key; if it was unsuccessful with a key mismatch,
+`value` points to the mismatching key/value pair; and if it was unsuccessful
+because the key did not exist, `value` equals `NULL`. Depending on the depth
+that the search reached, we may have hit hash exhaustion and the hash may have
+been recalculated, so we are returning this here, too.
+
+Given `struct search_result`, the return value of `search_recursive()`
+becomes:
+
+```c
+static struct search_result search_recursive(...)
 {
     // ...
 }
 ```
 
-`search_result` is a bit more heavy-weight: beyond the
-search status it also returns a pointer to the current anchor, a pointer to the
-value in the table that belongs to that anchor, and a convenience pointer to
-the hash that was used to search (and possibly find) the key:
+With these prerequisites out of the way, we can tackle the actual search
+algorithm:
+
+        search_recursive(anchor, hash, eq, key, ...):
+            if the current 5-bit sub-hash is a valid index in the current table: 
+                if the index refers to a key/value pair:
+                    if the key matches the search key:
+                        return SEARCH_SUCCESS
+                    else:
+                        return SEARCH_FAIL_KEYMISMATCH
+                else (i.e. it refers to a sub-table):
+                    search_recursive(sub-table, hash_next(hash), eq, key)
+            else:
+                return SEARCH_FAIL_NOTFOUND
+
+The basic idea is to start from the root of the HAMT and then, at every level,
+test if the curret sub-hash of the key is present in the current sub-trie. If
+not, bail and report failure immediately. If yes, check if the entry refers to
+a key/value pair or to another table. If this is true as well, check if the
+keys match and return success or failure accordingly. If the entry refers to
+a sub-table, repeat the search at the level of the sub-table.
+
+With the conceptual approach lined out, let's get into the implementation
+details.
+We start with deriving the table index for the current search level from the
+hash. This is accomplished using 
+`hash_get_index()`, which encapsulates the bit-fiddling required to extract
+the correct 5-bit hash for the current search level and returns the index as
+an unsigned integer.
 
 ```c
-typedef struct search_result {
-    search_status status;
-    hamt_node *anchor;
-    hamt_node *value;
-    hash_state *hash;
-} search_result;
+static search_result search_recursive(hamt_node *anchor,
+                                      hash_state *hash,
+                                      hamt_cmp_fn cmp_eq,
+                                      const void *key, ...)
+{
+    uint32_t expected_index = hash_get_index(hash);
+    ...
+}
 ```
-Here, `anchor` always points to the anchor at which the search was terminated;
-if the search was successful, `value` points to the table row that holds the
-key/value pair with matching key; if it was unsuccessful with a key mismatch,
-`value` points to the mismatching key/value pair. If the search was
-unsuccessful because the key did not exist, `value` equals `NULL`.
 
-With these prerequisites out of the way, we can tackle the actual search
-algorithm.
+The code then checks if the `expected_index` exists in the current table:
 
+```c
+    ...
+    if (has_index(anchor, expected_index)) {
+    ...
+    }
+```
 
-Conceptually, the approach is
+Here, `has_index()` is a simple helper function that checks if 
+the `INDEX(anchor)` bitfield has the bit set at `expected_index`:
 
-1. Prerequisites: pointer to an anchor, the key to look for
-2. Create valid `hash_state` object from the key
-3. Fundamental algorithm is recursive
-   1. look at index bitmap of the anchor: is the bit for the hash set?
-   2. if no, terminate search, return FAIL_NOTFOUND
-   3. if yes, check the type of the entry at the expected index/position: is it
-      a value?
-      1. if yes, compare the keys. Do they match?
-         1. if yes, return SUCCESS
-         2. if no, return FAIL_KEYMISMATCH
-      2. if no, it must be a table. Make the table the new anchor and recurse
+```c
+static inline bool has_expected_index(const hamt_node *anchor, size_t expected_index)
+{
+    return INDEX(anchor) & (1 << expected_index);
+}
+```
+
+If `has_index()` evaluates to false, the key does not exist in the HAMT and we
+can immediately fail the search and return the result:
+
+```c
+{
+    uint32_t expected_index = hash_get_index(hash);
+    if (has_index(anchor, expected_index)) {
+        ...
+        ... 
+        ...
+    }
+    search_result result = {.status = SEARCH_FAIL_NOTFOUND,
+                            .anchor = anchor,
+                            .value = NULL,
+                            .hash = hash};
+    return result;
+}
+```
+
+If `has_index()` evaluates to true, we need find the array index using
+`get_pos()` (see above), store it into `pos` and then acquire a pointer to the
+`next` node by addressing `pos` indices into the `anchor`'s table.
+
+```c
+{
+    ...
+    if (has_index(anchor, expected_index)) {
+        /* If yes, get the compact index to address the array */
+        int pos = get_pos(expected_index, INDEX(anchor));
+        /* Index into the table */
+        hamt_node *next = &TABLE(anchor)[pos];
+        ...
+    }
+    ...
+}
+```
+
+If the `next` node is not a value, we advance the hash state and recurse the
+search. If it is, we compare the keys and return success or failure
+accordingly:
+
+```c
+{
+        ...
+        /* Index into the table */
+        hamt_node *next = &TABLE(anchor)[pos];
+        /* Are we looking at a value or another level of tables? */
+        if (is_value(VALUE(next))) {
+            if ((*cmp_eq)(key, KEY(next)) == 0) {
+                /* Found: keys match */
+                search_result result = {.status = SEARCH_SUCCESS,
+                                        .anchor = anchor,
+                                        .value = next,
+                                        .hash = hash};
+                return result;
+            }
+            /* Not found: same hash but different key */
+            search_result result = {.status = SEARCH_FAIL_KEYMISMATCH,
+                                    .anchor = anchor,
+                                    .value = next,
+                                    .hash = hash};
+            return result;
+        } else {
+            /* For table entries, recurse to the next level */
+            return search_recursive(next, hash_next(hash), cmp_eq, key);
+        }
+```
+
+That concludes the implementation of the recursive search function and the
+complete implementation looks like this:
+
+```c
+static search_result search_recursive(hamt_node *anchor, hash_state *hash,
+                                      hamt_cmp_fn cmp_eq, const void *key)
+{
+    /* Determine the expected index in table */
+    uint32_t expected_index = hash_get_index(hash);
+    /* Check if the expected index is set */
+    if (has_index(anchor, expected_index)) {
+        /* If yes, get the compact index to address the array */
+        int pos = get_pos(expected_index, INDEX(anchor));
+        /* Index into the table */
+        hamt_node *next = &TABLE(anchor)[pos];
+        /* Are we looking at a value or another level of tables? */
+        if (is_value(VALUE(next))) {
+            if ((*cmp_eq)(key, KEY(next)) == 0) {
+                /* Found: keys match */
+                search_result result = {.status = SEARCH_SUCCESS,
+                                        .anchor = anchor,
+                                        .value = next,
+                                        .hash = hash};
+                return result;
+            }
+            /* Not found: same hash but different key */
+            search_result result = {.status = SEARCH_FAIL_KEYMISMATCH,
+                                    .anchor = anchor,
+                                    .value = next,
+                                    .hash = hash};
+            return result;
+        } else {
+            /* For table entries, recurse to the next level */
+            return search_recursive(next, hash_next(hash), cmp_eq, key);
+        }
+    }
+    /* Not found: expected index is not set, key does not exist */
+    search_result result = {.status = SEARCH_FAIL_NOTFOUND,
+                            .anchor = anchor,
+                            .value = NULL,
+                            .hash = hash};
+    return result;
+}
+```
+
+### Search: external API
+
+The external API for search is `hamt_get(trie, key)` which takes a `trie`
+and attempts to find (and return) a key/value pair specified by `key`. Its
+implementation uses `search_recursive()` from above:
+
+```c
+const void *hamt_get(const HAMT trie, void *key)
+{
+    hash_state *hash = &(hash_state){.key = key,
+                                     .hash_fn = trie->key_hash,
+                                     .hash = trie->key_hash(key, 0),
+                                     .depth = 0,
+                                     .shift = 0};
+    search_result sr = search_recursive(trie->root, hash, trie->key_cmp, key,
+                                        NULL, trie->ator);
+    if (sr.status == SEARCH_SUCCESS) {
+        return untagged(sr.VALUE(value));
+    }
+    return NULL;
+}
+```
+
+In order to use `search_recursive()`, it is necessary to set up the hash state
+management, initializing it with the `key`, the hashed `key`, and starting
+search from level `0` (corresponding to a shift of `0`). If the search is
+not successful, the function returns `NULL`, if it is successful, it passes
+a `void` pointer to the value that corresponds to `key`. Note the *untagging*
+of the `value` field since we're using it as a *tagged pointer* to indicate
+field types.
+
 
 ### Insert
 
