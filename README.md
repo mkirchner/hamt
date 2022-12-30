@@ -1162,7 +1162,7 @@ hamt_node *table_dup(struct hamt_allocator *ator, hamt_node *anchor)
 
 ### Example
 
-| key | hash     | binary hash                              | 5-bit ints           |
+| key | key hash | binary key hash                          | 5-bit ints           |
 |-----|----------|------------------------------------------|----------------------|
 | "0" | d271c07f | `11 01001 00111 00011 10000 00011 11111` | [ 31  3 16  3  7 9 ] |
 | "2" | 0129e217 | `00 00000 10010 10011 11000 10000 10111` | [ 23 16 24 19 18 0 ] |
