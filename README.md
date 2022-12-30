@@ -1252,50 +1252,57 @@ static struct search_result search_recursive(...)
 ```
 
 With these prerequisites out of the way, we can tackle the actual search
-algorithm.
+algorithm:
 
-The basic idea is to start from the root of the HAMT and then, at every level,
-test if the current sub-hash of the key is present in the current subtree. If yes, either
-return a value or move down another level into the trie; if no, bail.
-
-In pseudocode:
-
-        search_recursive(anchor, hash, eq, key):
-            if the key may be present in the current sub-trie:
-                if the current table holds a key/value pair at the expected index:
+        search_recursive(anchor, hash, eq, key, ...):
+            if the current 5-bit sub-hash is a valid index in the current table: 
+                if the index refers to a key/value pair:
                     if the key matches the search key:
                         return SEARCH_SUCCESS
                     else:
                         return SEARCH_FAIL_KEYMISMATCH
-                else (i.e. it holds a sub-table):
+                else (i.e. it refers to a sub-table):
                     search_recursive(sub-table, hash_next(hash), eq, key)
             else:
                 return SEARCH_FAIL_NOTFOUND
 
-The key step here is *testing for presence in the current subtree*. This can
-be accomplished by standard hash trie search.
+The basic idea is to start from the root of the HAMT and then, at every level,
+test if the curret sub-hash of the key is present in the current sub-trie. If
+not, bail and report failure immediately. If yes, check if the entry refers to
+a key/value pair or to another table. If this is true as well, check if the
+keys match and return success or failure accordingly. If the entry refers to
+a sub-table, repeat the search at the level of the sub-table.
 
-First, given the current trie
-level, determine the current 5-bit sub-hash and interpret the value as an
-integer:
+With the conceptual approach lined out, let's get into the implementation
+details.
+We start with deriving the table index for the current search level from the
+hash. This is accomplished using 
+`hash_get_index()`, which encapsulates the bit-fiddling required to extract
+the correct 5-bit hash for the current search level and returns the index as
+an unsigned integer.
 
 ```c
-uint32_t expected_index = hash_get_index(hash);
+static search_result search_recursive(hamt_node *anchor,
+                                      hash_state *hash,
+                                      hamt_cmp_fn cmp_eq,
+                                      const void *key, ...)
+{
+    uint32_t expected_index = hash_get_index(hash);
+    ...
+}
 ```
 
-where the trie level (and hash exhaustion) is managed by `struct hash_state`
-and its helper functions as described [above](#hashing).
-
-Second, check if the `expected_index` is set in the current table:
+The code then checks if the `expected_index` exists in the current table:
 
 ```c
+    ...
     if (has_index(anchor, expected_index)) {
     ...
     }
 ```
 
-where `has_index()` is a simple helper function that simply checks if the bit
-at `expected_index` is set in the `INDEX(anchor)` bitfield:
+Here, `has_index()` is a simple helper function that checks if 
+the `INDEX(anchor)` bitfield has the bit set at `expected_index`:
 
 ```c
 static inline bool has_expected_index(const hamt_node *anchor, size_t expected_index)
@@ -1304,7 +1311,76 @@ static inline bool has_expected_index(const hamt_node *anchor, size_t expected_i
 }
 ```
 
-The above lines are verbatim copies from the full implementation:
+If `has_index()` evaluates to false, the key does not exist in the HAMT and we
+can immediately fail the search and return the result:
+
+```c
+{
+    uint32_t expected_index = hash_get_index(hash);
+    if (has_index(anchor, expected_index)) {
+        ...
+        ... 
+        ...
+    }
+    search_result result = {.status = SEARCH_FAIL_NOTFOUND,
+                            .anchor = anchor,
+                            .value = NULL,
+                            .hash = hash};
+    return result;
+}
+```
+
+If `has_index()` evaluates to true, we need find the array index using
+`get_pos()` (see above), store it into `pos` and then acquire a pointer to the
+`next` node by addressing `pos` indices into the `anchor`'s table.
+
+```c
+{
+    ...
+    if (has_index(anchor, expected_index)) {
+        /* If yes, get the compact index to address the array */
+        int pos = get_pos(expected_index, INDEX(anchor));
+        /* Index into the table */
+        hamt_node *next = &TABLE(anchor)[pos];
+        ...
+    }
+    ...
+}
+```
+
+If the `next` node is not a value, we advance the hash state and recurse the
+search. If it is, we compare the keys and return success or failure
+accordingly:
+
+```c
+{
+        ...
+        /* Index into the table */
+        hamt_node *next = &TABLE(anchor)[pos];
+        /* Are we looking at a value or another level of tables? */
+        if (is_value(VALUE(next))) {
+            if ((*cmp_eq)(key, KEY(next)) == 0) {
+                /* Found: keys match */
+                search_result result = {.status = SEARCH_SUCCESS,
+                                        .anchor = anchor,
+                                        .value = next,
+                                        .hash = hash};
+                return result;
+            }
+            /* Not found: same hash but different key */
+            search_result result = {.status = SEARCH_FAIL_KEYMISMATCH,
+                                    .anchor = anchor,
+                                    .value = next,
+                                    .hash = hash};
+            return result;
+        } else {
+            /* For table entries, recurse to the next level */
+            return search_recursive(next, hash_next(hash), cmp_eq, key);
+        }
+```
+
+That concludes the implementation of the recursive search function and the
+complete implementation looks like this:
 
 ```c
 static search_result search_recursive(hamt_node *anchor, hash_state *hash,
