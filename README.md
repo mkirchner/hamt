@@ -1160,7 +1160,16 @@ hamt_node *table_dup(struct hamt_allocator *ator, hamt_node *anchor)
 
 ## Putting it all together
 
-### Example
+The following subsections detail the implementations of search, insertion and
+removal of key/value pairs in our HAMT implementation. Note that, while the
+implementations shown here have been thoroughly tested and are deemed correct,
+they may have been replaced by faster or more capable implementations in the
+actual `libhamt` source. An attempt is being made to keep this section up to
+date with the actual implementation but the choice here is in favor of
+conceptual clarity and will not necessarily cover every implementation detail.
+PRs welcome.
+
+### Example data
 
 | key | key hash | binary key hash                          | 5-bit ints           |
 |-----|----------|------------------------------------------|----------------------|
@@ -1170,10 +1179,7 @@ hamt_node *table_dup(struct hamt_allocator *ator, hamt_node *anchor)
 | "7" | 23ea8628 | `00 10001 11110 10101 00001 10001 01000` | [  8 17 1 21 30 17 ] |
 | "8" | bd920017 | `10 11110 11001 00100 00000 00000 10111` | [ 23 0  0  4 25 30 ] |
 
-### Search
-
-* How does search in a HAMT work? Walk through a basic example
-
+### Search: internal API
 
 Search plays a double role: finding a HAMT entry is a fundamental part of the
 HAMT interface (exposed by `hamt_get()`); and the first step in the insert and remove
@@ -1181,16 +1187,16 @@ functions is finding the anchors to operate on.
 
 It is therefore desirable to approach the search implementation from a
 more generic perspective such that we do not need to re-invent the
-wheel for each of these use cases. We introduce a suitable abstraction by
-defining an internal search function
+wheel for each of these use cases. We therefore define an internal search
+function
 
 ```c
 static ... search_recursive(...);
 ```
 
-that gets called from the API functions where appropriate. As the
+that is called from internal and the API functions alike. As the
 name implies, we implement search in a recursive manner (this is for clarity;
-conversion to an iterative solution is trivial).
+conversion to an iterative solution is straightforward).
 
 When we search for a key in the HAMT, there are two fundamental outcomes: the
 key is either there, or it is not (note that these are exactly the semantics
@@ -1423,6 +1429,38 @@ static search_result search_recursive(hamt_node *anchor, hash_state *hash,
     return result;
 }
 ```
+
+### Search: external API
+
+The external API for search is `hamt_get(trie, key)` which takes a `trie`
+and attempts to find (and return) a key/value pair specified by `key`. Its
+implementation uses `search_recursive()` from above:
+
+```c
+const void *hamt_get(const HAMT trie, void *key)
+{
+    hash_state *hash = &(hash_state){.key = key,
+                                     .hash_fn = trie->key_hash,
+                                     .hash = trie->key_hash(key, 0),
+                                     .depth = 0,
+                                     .shift = 0};
+    search_result sr = search_recursive(trie->root, hash, trie->key_cmp, key,
+                                        NULL, trie->ator);
+    if (sr.status == SEARCH_SUCCESS) {
+        return untagged(sr.VALUE(value));
+    }
+    return NULL;
+}
+```
+
+In order to use `search_recursive()`, it is necessary to set up the hash state
+management, initializing it with the `key`, the hashed `key`, and starting
+search from level `0` (corresponding to a shift of `0`). If the search is
+not successful, the function returns `NULL`, if it is successful, it passes
+a `void` pointer to the value that corresponds to `key`. Note the *untagging*
+of the `value` field since we're using it as a *tagged pointer* to indicate
+field types.
+
 
 ### Insert
 
