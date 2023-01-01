@@ -1336,7 +1336,7 @@ can immediately fail the search and return the result:
 }
 ```
 
-If `has_index()` evaluates to true, we need find the array index using
+If `has_index()` evaluates to true, we find the array index using
 `get_pos()` (see above), store it into `pos` and then acquire a pointer to the
 `next` node by addressing `pos` indices into the `anchor`'s table.
 
@@ -1462,8 +1462,179 @@ of the `value` field since we're using it as a *tagged pointer* to indicate
 field types.
 
 
-### Insert
+### Insert: internal functions
 
+`libhamt` does not support an explicit insertion function; all insertions into
+the HAMT are *upserts*, i.e. after calling `hamt_set()` the API guarantees
+that the requested key/value pair exists, irrespective of potential previous
+entries that may have had the same key but a different value.
+
+The internal function that implements this behavior is `set()`:
+
+```c
+static const hamt_node *set(HAMT h, hamt_node *anchor, hamt_key_hash_fn hash_fn,
+                            hamt_cmp_fn cmp_fn, void *key, void *value)
+```
+
+`set()` takes a HAMT, an anchor in that HAMT, hashing and comparison
+functions as well as a key/value pair. After initializing the hash state, the
+function makes use of `search_recursive` to find the specified `key`. It deals
+with three different search outcomes: (1) if the search is successful, the
+value of `key` gets replaced with the new `value`; (2) if the search is
+unsuccessful because the key does not exist, it attempts to insert a new
+key/value pair at the appropriate position; and (3) if the search fails due to
+a key mismatch (i.e. there is an entry at the expected hash position but its
+key does not equal `key`), it extends the hash trie until the new key/value
+pair can be placed correctly. Cases (2) and (3) are covered by the
+`insert_kv()` and `insert_table()` helper functions, respectively.
+
+```c
+static const hamt_node *set(HAMT h, hamt_node *anchor, hamt_key_hash_fn hash_fn,
+                            hamt_cmp_fn cmp_fn, void *key, void *value)
+{
+    hash_state *hash = &(hash_state){.key = key,
+                                     .hash_fn = hash_fn,
+                                     .hash = hash_fn(key, 0),
+                                     .depth = 0,
+                                     .shift = 0};
+    search_result sr =
+        search_recursive(anchor, hash, cmp_fn, key, NULL, h->ator);
+    const hamt_node *inserted;
+    switch (sr.status) {
+    case SEARCH_SUCCESS:
+        sr.VALUE(value) = tagged(value);
+        inserted = sr.value;
+        break;
+    case SEARCH_FAIL_NOTFOUND:
+        if ((inserted = insert_kv(sr.anchor, sr.hash, key, value, h->ator)) !=
+            NULL) {
+            h->size += 1;
+        }
+        break;
+    case SEARCH_FAIL_KEYMISMATCH:
+        if ((inserted = insert_table(sr.value, sr.hash, key, value, h->ator)) !=
+            NULL) {
+            h->size += 1;
+        }
+        break;
+    }
+    return inserted;
+}
+```
+
+If the call to `search_recursive()` fails with `SEARCH_FAIL_NOTFOUND`, we know
+that there is a free row in the table of `sr.anchor`. To insert the new
+`key`/`value` pair, we calculate the position of the `key` in the current
+table: it extracts the 0-31 index position for the current key and stores it
+into `ix`, extends the existing `INDEX(anchor)` index bitmap to include the
+new key by setting the `ix`-th bit, and then calculates the dense index
+position of the new entry via `get_pos()`. It then uses `table_extend()` to
+extend the table to the correct size and populates the `key` and `value`
+entries to reflect the new key/value pair. Note the pointer tagging on the
+value field to mark it as a key/value row in the table (as opposed to a row
+that points to a sub-table).
+
+```c
+static const hamt_node *insert_kv(hamt_node *anchor, hash_state *hash,
+                                  void *key, void *value,
+                                  struct hamt_allocator *ator)
+{
+    /* calculate position in new table */
+    uint32_t ix = hash_get_index(hash);
+    uint32_t new_index = INDEX(anchor) | (1 << ix);
+    int pos = get_pos(ix, new_index);
+    /* extend table */
+    size_t n_rows = get_popcount(INDEX(anchor));
+    anchor = table_extend(ator, anchor, n_rows, ix, pos);
+    if (!anchor)
+        return NULL;
+    hamt_node *new_table = TABLE(anchor);
+    /* set new k/v pair */
+    new_table[pos].as.kv.key = key;
+    new_table[pos].as.kv.value = tagged(value);
+    /* return a pointer to the inserted k/v pair */
+    return &new_table[pos];
+}
+```
+
+When the call to `search_recursive()` in `set()` fails with
+`SEARCH_FAIL_KEYMISMATCH`, the situation is different: there is another entry
+(either a key/value pair or a reference to a sub-table) in the HAMT that
+currently occupies a transitionary trie location for `key`. This is expected
+to happen regularly: keys are always inserted with the shortest possible trie
+path that resolves hashing conflicts between *existing* keys. As more and more
+entries are added to the HAMT, these paths necessarily must increase in
+length. This situation is handled by `insert_table()`:
+
+```c
+static const hamt_node *insert_table(hamt_node *anchor, hash_state *hash,
+                                     void *key, void *value,
+                                     struct hamt_allocator *ator)
+{
+    /* Collect everything we know about the existing value */
+    hash_state *x_hash =
+        &(hash_state){.key = KEY(anchor),
+                      .hash_fn = hash->hash_fn,
+                      .hash = hash->hash_fn(KEY(anchor), hash->depth / 5),
+                      .depth = hash->depth,
+                      .shift = hash->shift};
+    void *x_value = VALUE(anchor); /* tagged (!) value ptr */
+    /* increase depth until the hashes diverge, building a list
+     * of tables along the way */
+    hash_state *next_hash = hash_next(hash);
+    hash_state *x_next_hash = hash_next(x_hash);
+    uint32_t next_index = hash_get_index(next_hash);
+    uint32_t x_next_index = hash_get_index(x_next_hash);
+    while (x_next_index == next_index) {
+        TABLE(anchor) = table_allocate(ator, 1);
+        INDEX(anchor) = (1 << next_index);
+        next_hash = hash_next(next_hash);
+        x_next_hash = hash_next(x_next_hash);
+        next_index = hash_get_index(next_hash);
+        x_next_index = hash_get_index(x_next_hash);
+        anchor = TABLE(anchor);
+    }
+    /* the hashes are different, let's allocate a table with two
+     * entries to store the existing and new values */
+    TABLE(anchor) = table_allocate(ator, 2);
+    INDEX(anchor) = (1 << next_index) | (1 << x_next_index);
+    /* determine the proper position in the allocated table */
+    int x_pos = get_pos(x_next_index, INDEX(anchor));
+    int pos = get_pos(next_index, INDEX(anchor));
+    /* fill in the existing value; no need to tag the value pointer
+     * since it is already tagged. */
+    TABLE(anchor)[x_pos].as.kv.key = (void *)x_hash->key;
+    TABLE(anchor)[x_pos].as.kv.value = x_value;
+    /* fill in the new key/value pair, tagging the pointer to the
+     * new value to mark it as a value ptr */
+    TABLE(anchor)[pos].as.kv.key = key;
+    TABLE(anchor)[pos].as.kv.value = tagged(value);
+
+    return &TABLE(anchor)[pos];
+}
+```
+
+`insert_table()` works in three stages: (1) it initiatlizes the `hash_state`
+for the current anchor; (2) creates a series of single-entry tables until the
+hashes of the current and new keys diverge; and (3) finally creates a new
+table of size 2 that holds the old entry as well as the new key/value pair.
+
+### Insert: external API
+
+The implementation of the external API for inserting and updating values in
+the HAMT is straighforward:
+
+```c
+const void *hamt_set(HAMT trie, void *key, void *value)
+{
+    const hamt_node *n =
+        set(trie, trie->root, trie->key_hash, trie->key_cmp, key, value);
+    return VALUE(n);
+}
+```
+
+`hamt_set()` uses a vanilla call to the internal `set()` function and returns
+a pointer to the value of the new key.
 
 
 ### Remove
