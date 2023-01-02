@@ -361,6 +361,66 @@ static search_result search_recursive(hamt_node *anchor, hash_state *hash,
     return result;
 }
 
+static search_result search_iterative(hamt_node *anchor, hash_state *hash,
+                                      hamt_cmp_fn cmp_eq, const void *key,
+                                      hamt_node *path,
+                                      struct hamt_allocator *ator)
+{
+    while (1) {
+        assert(!is_value(VALUE(anchor)) &&
+               "Invariant: path copy requires an internal node");
+        hamt_node *copy = path;
+        if (path) {
+            /* copy the table we're pointing to */
+            TABLE(copy) = table_dup(ator, anchor);
+            INDEX(copy) = INDEX(anchor);
+            assert(!is_value(VALUE(copy)) && "Copy caused a leaf/internal switch");
+        } else {
+            copy = anchor;
+        }
+
+        /* determine the expected index in table */
+        uint32_t expected_index = hash_get_index(hash);
+        /* check if the expected index is set */
+        if (has_index(copy, expected_index)) {
+            /* if yes, get the compact index to address the array */
+            int pos = get_pos(expected_index, INDEX(copy));
+            /* index into the table and check what type of entry we're looking at */
+            hamt_node *next = &TABLE(copy)[pos];
+            if (is_value(VALUE(next))) {
+                if ((*cmp_eq)(key, KEY(next)) == 0) {
+                    /* keys match */
+                    search_result result = {.status = SEARCH_SUCCESS,
+                                            .anchor = copy,
+                                            .value = next,
+                                            .hash = hash};
+                    return result;
+                }
+                /* not found: same hash but different key */
+                search_result result = {.status = SEARCH_FAIL_KEYMISMATCH,
+                                        .anchor = copy,
+                                        .value = next,
+                                        .hash = hash};
+                return result;
+            } else {
+                /* For table entries, iterate */
+                assert(TABLE(next) != NULL &&
+                       "invariant: table ptrs must not be NULL");
+                anchor = next;
+                hash = hash_next(hash);
+                path = path ? next : NULL;
+                continue;
+            }
+        }
+        /* expected index is not set, terminate search */
+        search_result result = {.status = SEARCH_FAIL_NOTFOUND,
+                                .anchor = copy,
+                                .value = NULL,
+                                .hash = hash};
+        return result;
+    }
+}
+
 const void *hamt_get(const HAMT trie, void *key)
 {
     hash_state *hash = &(hash_state){.key = key,
@@ -368,7 +428,7 @@ const void *hamt_get(const HAMT trie, void *key)
                                      .hash = trie->key_hash(key, 0),
                                      .depth = 0,
                                      .shift = 0};
-    search_result sr = search_recursive(trie->root, hash, trie->key_cmp, key,
+    search_result sr = search_iterative(trie->root, hash, trie->key_cmp, key,
                                         NULL, trie->ator);
     if (sr.status == SEARCH_SUCCESS) {
         return untagged(sr.VALUE(value));
@@ -385,7 +445,7 @@ static const hamt_node *set(HAMT h, hamt_node *anchor, hamt_key_hash_fn hash_fn,
                                      .depth = 0,
                                      .shift = 0};
     search_result sr =
-        search_recursive(anchor, hash, cmp_fn, key, NULL, h->ator);
+        search_iterative(anchor, hash, cmp_fn, key, NULL, h->ator);
     const hamt_node *inserted;
     switch (sr.status) {
     case SEARCH_SUCCESS:
@@ -421,7 +481,7 @@ static path_result search(hamt_node *anchor, hash_state *hash,
 {
     path_result pr;
     pr.root = mem_alloc(ator, sizeof(hamt_node));
-    pr.sr = search_recursive(anchor, hash, cmp_eq, key, pr.root, ator);
+    pr.sr = search_iterative(anchor, hash, cmp_eq, key, pr.root, ator);
     return pr;
 }
 

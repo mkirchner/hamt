@@ -227,7 +227,7 @@ MU_TEST_CASE(test_search)
                           .hash = my_hash_1(test_cases[i].key, 0),
                           .depth = 0,
                           .shift = 0};
-        search_result sr = search_recursive(t.root, hash, my_strncmp_1,
+        search_result sr = search_iterative(t.root, hash, my_strncmp_1,
                                             test_cases[i].key, NULL, t.ator);
         MU_ASSERT(sr.status == test_cases[i].expected_status,
                   "Unexpected search result status");
@@ -277,7 +277,7 @@ MU_TEST_CASE(test_set_with_collisions)
                                      .hash = t->key_hash(&keys[2], 0),
                                      .depth = 0,
                                      .shift = 0};
-    search_result sr = search_recursive(t->root, hash, t->key_cmp, &keys[2],
+    search_result sr = search_iterative(t->root, hash, t->key_cmp, &keys[2],
                                         NULL, &hamt_allocator_default);
     MU_ASSERT(sr.status == SEARCH_SUCCESS, "failed to find inserted value");
     MU_ASSERT(new_node == sr.value, "Query result points to the wrong node");
@@ -307,7 +307,7 @@ MU_TEST_CASE(test_set_whole_enchilada_00)
                                          .hash = t->key_hash(&data[i].key, 0),
                                          .depth = 0,
                                          .shift = 0};
-        search_result sr = search_recursive(t->root, hash, t->key_cmp,
+        search_result sr = search_iterative(t->root, hash, t->key_cmp,
                                             &data[i].key, NULL, t->ator);
         MU_ASSERT(sr.status == SEARCH_SUCCESS, "failed to find inserted value");
         int *value = (int *)untagged(sr.value->as.kv.value);
@@ -369,7 +369,7 @@ MU_TEST_CASE(test_set_stringkeys)
                                          .hash = t->key_hash(data[i].key, 0),
                                          .depth = 0,
                                          .shift = 0};
-        search_result sr = search_recursive(t->root, hash, t->key_cmp,
+        search_result sr = search_iterative(t->root, hash, t->key_cmp,
                                             data[i].key, NULL, t->ator);
         MU_ASSERT(sr.status == SEARCH_SUCCESS, "failed to find inserted value");
         int *value = (int *)untagged(sr.value->as.kv.value);
@@ -411,7 +411,7 @@ MU_TEST_CASE(test_aspell_dict_en)
                                      .depth = 0,
                                      .shift = 0};
     search_result sr =
-        search_recursive(t->root, hash, t->key_cmp, target, NULL, t->ator);
+        search_iterative(t->root, hash, t->key_cmp, target, NULL, t->ator);
     MU_ASSERT(sr.status == SEARCH_SUCCESS, "fail");
     char *value = (char *)untagged(sr.value->as.kv.value);
 
@@ -695,7 +695,7 @@ MU_TEST_CASE(test_persistent_aspell_dict_en)
                                      .depth = 0,
                                      .shift = 0};
     search_result sr =
-        search_recursive(t->root, hash, t->key_cmp, target, NULL, t->ator);
+        search_iterative(t->root, hash, t->key_cmp, target, NULL, t->ator);
     MU_ASSERT(sr.status == SEARCH_SUCCESS, "fail");
     char *value = (char *)untagged(sr.value->as.kv.value);
 
