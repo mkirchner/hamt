@@ -227,8 +227,8 @@ MU_TEST_CASE(test_search)
                           .hash = my_hash_1(test_cases[i].key, 0),
                           .depth = 0,
                           .shift = 0};
-        search_result sr = search_recursive(t.root, hash, my_strncmp_1,
-                                            test_cases[i].key, NULL, t.ator);
+        search_result sr = search_recursive(&t, t.root, hash, my_strncmp_1,
+                                            test_cases[i].key, NULL);
         MU_ASSERT(sr.status == test_cases[i].expected_status,
                   "Unexpected search result status");
         if (test_cases[i].expected_status == SEARCH_SUCCESS) {
@@ -277,8 +277,7 @@ MU_TEST_CASE(test_set_with_collisions)
                                      .hash = t->key_hash(&keys[2], 0),
                                      .depth = 0,
                                      .shift = 0};
-    search_result sr = search_recursive(t->root, hash, t->key_cmp, &keys[2],
-                                        NULL, &hamt_allocator_default);
+    search_result sr = search_recursive(t, t->root, hash, t->key_cmp, &keys[2], NULL);
     MU_ASSERT(sr.status == SEARCH_SUCCESS, "failed to find inserted value");
     MU_ASSERT(new_node == sr.value, "Query result points to the wrong node");
     hamt_delete(t);
@@ -307,8 +306,8 @@ MU_TEST_CASE(test_set_whole_enchilada_00)
                                          .hash = t->key_hash(&data[i].key, 0),
                                          .depth = 0,
                                          .shift = 0};
-        search_result sr = search_recursive(t->root, hash, t->key_cmp,
-                                            &data[i].key, NULL, t->ator);
+        search_result sr = search_recursive(t, t->root, hash, t->key_cmp,
+                                            &data[i].key, NULL);
         MU_ASSERT(sr.status == SEARCH_SUCCESS, "failed to find inserted value");
         int *value = (int *)untagged(sr.value->as.kv.value);
         MU_ASSERT(value, "found value is NULL");
@@ -369,8 +368,8 @@ MU_TEST_CASE(test_set_stringkeys)
                                          .hash = t->key_hash(data[i].key, 0),
                                          .depth = 0,
                                          .shift = 0};
-        search_result sr = search_recursive(t->root, hash, t->key_cmp,
-                                            data[i].key, NULL, t->ator);
+        search_result sr = search_recursive(t, t->root, hash, t->key_cmp,
+                                            data[i].key, NULL);
         MU_ASSERT(sr.status == SEARCH_SUCCESS, "failed to find inserted value");
         int *value = (int *)untagged(sr.value->as.kv.value);
         MU_ASSERT(value, "found value is NULL");
@@ -411,7 +410,7 @@ MU_TEST_CASE(test_aspell_dict_en)
                                      .depth = 0,
                                      .shift = 0};
     search_result sr =
-        search_recursive(t->root, hash, t->key_cmp, target, NULL, t->ator);
+        search_recursive(t, t->root, hash, t->key_cmp, target, NULL);
     MU_ASSERT(sr.status == SEARCH_SUCCESS, "fail");
     char *value = (char *)untagged(sr.value->as.kv.value);
 
@@ -435,20 +434,23 @@ MU_TEST_CASE(test_shrink_table)
     } data[N] = {
         {"0", 0, 1}, {"2", 2, 3}, {"4", 4, 4}, {"7", 7, 12}, {"8", 8, 22}};
 
+    /* dummy HAMT so we can pass the allocator info */
+    HAMT t = hamt_create(my_keyhash_string, my_keycmp_string,
+                         &hamt_allocator_default);
+
     /* create table w/ 5 entries and delete each position */
     hamt_node *a0;
     for (size_t delete_pos = 0; delete_pos < N; delete_pos++) {
-        a0 = mem_alloc(&hamt_allocator_default, sizeof(hamt_node));
+        a0 = mem_alloc(t->ator, sizeof(hamt_node));
         memset(a0, 0, sizeof(hamt_node));
-        TABLE(a0) = table_allocate(&hamt_allocator_default, N);
+        TABLE(a0) = table_allocate(t, N);
         for (size_t i = 0; i < N; ++i) {
             INDEX(a0) |= (1 << data[i].index);
             TABLE(a0)[i].as.kv.key = (void *)data[i].key;
             TABLE(a0)[i].as.kv.value = tagged(&data[i].value);
         }
         uint32_t delete_index = data[delete_pos].index;
-        a0 = table_shrink(&hamt_allocator_default, a0, N, delete_index,
-                          delete_pos);
+        a0 = table_shrink(t, a0, N, delete_index, delete_pos);
         MU_ASSERT(get_popcount(INDEX(a0)) == N - 1, "wrong number of rows");
         size_t diff = 0;
         for (size_t i = 0; i < N; ++i) {
@@ -462,9 +464,10 @@ MU_TEST_CASE(test_shrink_table)
                           untagged(TABLE(a0)[i - diff].as.kv.value),
                       "unexpected value in shrunk table");
         }
-        table_free(&hamt_allocator_default, TABLE(a0), 4);
-        mem_free(&hamt_allocator_default, a0);
+        table_free(t, TABLE(a0), 4);
+        mem_free(t->ator, a0);
     }
+    hamt_delete(t);
     return 0;
 }
 
@@ -479,16 +482,20 @@ MU_TEST_CASE(test_gather_table)
         int index;
     } data[N] = {{"0", 0, 1}, {"2", 2, 3}};
 
-    hamt_node *a0 = mem_alloc(&hamt_allocator_default, sizeof(hamt_node));
+    /* dummy HAMT so we can pass the allocator info */
+    HAMT t = hamt_create(my_keyhash_string, my_keycmp_string,
+                         &hamt_allocator_default);
+
+    hamt_node *a0 = mem_alloc(t->ator, sizeof(hamt_node));
     a0->as.table.index = 0;
-    a0->as.table.ptr = table_allocate(&hamt_allocator_default, N);
+    a0->as.table.ptr = table_allocate(t, N);
     for (size_t i = 0; i < N; ++i) {
         a0->as.table.index |= (1 << data[i].index);
         a0->as.table.ptr[i].as.kv.key = (void *)data[i].key;
         a0->as.table.ptr[i].as.kv.value = tagged(&data[i].value);
     }
 
-    hamt_node *a1 = table_gather(&hamt_allocator_default, a0, 0);
+    hamt_node *a1 = table_gather(t, a0, 0);
 
     MU_ASSERT(a1->as.kv.key == data[0].key, "wrong key in gather");
     MU_ASSERT(untagged(a1->as.kv.value) == (void *)&data[0].value,
@@ -523,7 +530,7 @@ MU_TEST_CASE(test_remove)
                               .depth = 0,
                               .shift = 0};
             path_result pr =
-                rem(t->root, t->root, hash, t->key_cmp, data[i].key, t->ator);
+                rem(t, t->root, t->root, hash, t->key_cmp, data[i].key);
             MU_ASSERT(pr.rr.status == REMOVE_SUCCESS ||
                           pr.rr.status == REMOVE_GATHERED,
                       "failed to find inserted value");
@@ -695,7 +702,7 @@ MU_TEST_CASE(test_persistent_aspell_dict_en)
                                      .depth = 0,
                                      .shift = 0};
     search_result sr =
-        search_recursive(t->root, hash, t->key_cmp, target, NULL, t->ator);
+        search_recursive(t, t->root, hash, t->key_cmp, target, NULL);
     MU_ASSERT(sr.status == SEARCH_SUCCESS, "fail");
     char *value = (char *)untagged(sr.value->as.kv.value);
 
