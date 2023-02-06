@@ -55,7 +55,7 @@ struct hamt_impl {
     struct hamt_allocator *ator;
 };
 
-/* hash_stateing w/ state management */
+/* Hashing w/ state management */
 typedef struct hash_state {
     const void *key;
     hamt_key_hash_fn hash_fn;
@@ -124,13 +124,93 @@ static inline bool has_index(const hamt_node *anchor, size_t index)
     return INDEX(anchor) & (1 << index);
 }
 
-hamt_node *table_allocate(struct hamt_allocator *ator, size_t size)
+
+/* Table cache */
+struct free_list
 {
-    return (hamt_node *)mem_alloc(ator, (size * sizeof(hamt_node)));
+    size_t capacity;
+    size_t size;
+    struct hamt_node **ptrs;
+};
+
+static bool freelist_initialized = false;
+static struct free_list freelist[32];
+
+void table_freelist_print()
+{
+    printf("[");
+    for (size_t i = 0; i < 31; ++i) {
+        printf("%lu(%lu), ", freelist[i].size, freelist[i].capacity);
+    }
+    printf("%lu]\n", freelist[31].size);
 }
 
-void table_free(struct hamt_allocator *ator, hamt_node *ptr, size_t size)
+void table_freelist_init(struct hamt_allocator *ator, size_t cachesize)
 {
+    static double freelist_bucket_frequencies[32] = {
+        0.0032, 0.0948, 0.0141, 0.0157, 0.0212, 0.0247, 0.0225, 0.0181, 0.0121,
+        0.0067, 0.0035, 0.0016, 0.0006, 0.0002, 0.0000, 0.0000, 0.0000, 0.0000,
+        0.0000, 0.0000, 0.0000, 0.0000, 0.0000, 0.0000, 0.0000, 0.0000, 0.0000,
+        0.0000, 0.0000, 0.0000, 0.0001, 0.0044
+    };
+    static size_t freelist_bucket_capacities[32] = {0};
+
+    for (size_t i = 0; i < 32; ++i) {
+        freelist[i].capacity = (size_t) cachesize * freelist_bucket_frequencies[i];
+        freelist[i].size = 0;
+        freelist[i].ptrs = mem_alloc(ator, freelist[i].capacity * sizeof(hamt_node*));
+    }
+    freelist_initialized = true;
+    // table_freelist_print();
+}
+
+void table_freelist_destroy()
+{
+    // table_freelist_print();
+    for (size_t i = 0; i < 32; ++i) {
+        free(freelist[i].ptrs);
+    }
+    freelist_initialized = false;
+}
+
+void hamt_cache_init(struct hamt_allocator *ator, size_t cachesize)
+{
+    table_freelist_init(ator, cachesize);
+}
+
+void hamt_cache_destroy()
+{
+    table_freelist_print();
+    table_freelist_destroy();
+}
+
+hamt_node *table_allocate(struct hamt_allocator *ator, size_t size)
+{
+    if (freelist_initialized) {
+        if (size > 0) {
+            size_t index = size - 1;
+            if (freelist[index].size > 0) {
+                size_t pos = freelist[index].size - 1;
+                freelist[index].size--;
+                return freelist[index].ptrs[pos];
+            }
+        }
+
+    }
+    return (struct hamt_node *)mem_alloc(ator, (size * sizeof(struct hamt_node)));
+}
+
+void table_free(struct hamt_allocator *ator, struct hamt_node *ptr, size_t size)
+{
+    if (freelist_initialized) {
+        size_t index = size - 1;
+        if (size && ((freelist[index].size + 1) < freelist[index].capacity)) {
+            size_t pos = freelist[index].size;
+            freelist[index].ptrs[pos] = ptr;
+            freelist[index].size++;
+            return;
+        }
+    }
     mem_free(ator, ptr);
 }
 

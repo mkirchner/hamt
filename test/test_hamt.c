@@ -393,6 +393,7 @@ MU_TEST_CASE(test_aspell_dict_en)
     words_load(&words, WORDS_MAX);
     t = hamt_create(my_keyhash_string, my_keycmp_string,
                     &hamt_allocator_default);
+    hamt_cache_init(t->ator, 100000);
     for (size_t i = 0; i < WORDS_MAX; i++) {
         /* structural sharing */
         hamt_set(t, words[i], words[i]);
@@ -419,6 +420,7 @@ MU_TEST_CASE(test_aspell_dict_en)
     MU_ASSERT(strcmp(value, target) == 0, "invalid value");
     MU_ASSERT(sr.hash->depth == 7, "invalid depth");
 
+    hamt_cache_destroy();
     hamt_delete(t);
     words_free(words, WORDS_MAX);
     return 0;
