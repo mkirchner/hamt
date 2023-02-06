@@ -393,7 +393,6 @@ MU_TEST_CASE(test_aspell_dict_en)
     t = hamt_create(my_keyhash_string, my_keycmp_string,
                     &hamt_allocator_default);
     for (size_t i = 0; i < WORDS_MAX; i++) {
-        /* structural sharing */
         hamt_set(t, words[i], words[i]);
     }
 
@@ -417,6 +416,21 @@ MU_TEST_CASE(test_aspell_dict_en)
     MU_ASSERT(value, "failed to retrieve existing value");
     MU_ASSERT(strcmp(value, target) == 0, "invalid value");
     MU_ASSERT(sr.hash->depth == 7, "invalid depth");
+
+
+    /*
+    printf("  Table size distribution for n=%lu:\n", t->size);
+    for (size_t i = 0; i < 32; ++i) {
+        printf("    %2lu: %lu, %.4f\n", i+1, t->stats.table_sizes[i], t->stats.table_sizes[i]/(double)t->size);
+    }
+    */
+    /*
+    printf("{");
+    for (size_t i = 0; i < 32; ++i) {
+        printf("%.4f, ", t->stats.table_sizes[i]/(double)t->size);
+    }
+    printf("}\n");
+    */
 
     hamt_delete(t);
     words_free(words, WORDS_MAX);

@@ -131,12 +131,14 @@ static inline bool has_index(const hamt_node *anchor, size_t index)
 
 hamt_node *table_allocate(struct hamt_impl *h, size_t size)
 {
+    if (size) h->stats.table_sizes[size-1] += 1;
     return (hamt_node *)mem_alloc(h->ator, (size * sizeof(hamt_node)));
 }
 
 void table_free(struct hamt_impl *h, hamt_node *ptr, size_t size)
 {
     mem_free(h->ator, ptr);
+    if (size) h->stats.table_sizes[size-1] -= 1;
 }
 
 hamt_node *table_extend(struct hamt_impl *h, hamt_node *anchor,
