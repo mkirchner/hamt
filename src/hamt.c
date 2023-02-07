@@ -46,6 +46,18 @@ typedef struct hamt_node {
     } as;
 } hamt_node;
 
+struct hamt_stats {
+    size_t table_sizes[32];
+};
+
+/* table cache */
+struct hamt_table_cache
+{
+    size_t capacity;
+    size_t size;
+    struct hamt_node **ptrs;
+};
+
 /* Opaque user-facing implementation */
 struct hamt_impl {
     struct hamt_node *root;
@@ -53,6 +65,9 @@ struct hamt_impl {
     hamt_key_hash_fn key_hash;
     hamt_cmp_fn key_cmp;
     struct hamt_allocator *ator;
+    struct hamt_stats stats;
+    struct hamt_table_cache table_cache[32];
+    bool table_cache_initialized;
 };
 
 /* Hashing w/ state management */
@@ -124,28 +139,18 @@ static inline bool has_index(const hamt_node *anchor, size_t index)
     return INDEX(anchor) & (1 << index);
 }
 
+/* table cache  management */
 
-/* Table cache */
-struct free_list
-{
-    size_t capacity;
-    size_t size;
-    struct hamt_node **ptrs;
-};
-
-static bool freelist_initialized = false;
-static struct free_list freelist[32];
-
-void table_freelist_print()
+void table_freelist_print(struct hamt_impl *h)
 {
     printf("[");
     for (size_t i = 0; i < 31; ++i) {
-        printf("%lu(%lu), ", freelist[i].size, freelist[i].capacity);
+        printf("%lu(%lu), ", h->table_cache[i].size, h->table_cache[i].capacity);
     }
-    printf("%lu]\n", freelist[31].size);
+    printf("%lu]\n", h->table_cache[31].size);
 }
 
-void table_freelist_init(struct hamt_allocator *ator, size_t cachesize)
+void table_freelist_init(struct hamt_impl *h, size_t cachesize)
 {
     static double freelist_bucket_frequencies[32] = {
         0.0032, 0.0948, 0.0141, 0.0157, 0.0212, 0.0247, 0.0225, 0.0181, 0.0121,
@@ -153,71 +158,68 @@ void table_freelist_init(struct hamt_allocator *ator, size_t cachesize)
         0.0000, 0.0000, 0.0000, 0.0000, 0.0000, 0.0000, 0.0000, 0.0000, 0.0000,
         0.0000, 0.0000, 0.0000, 0.0001, 0.0044
     };
-    static size_t freelist_bucket_capacities[32] = {0};
 
     for (size_t i = 0; i < 32; ++i) {
-        freelist[i].capacity = (size_t) cachesize * freelist_bucket_frequencies[i];
-        freelist[i].size = 0;
-        freelist[i].ptrs = mem_alloc(ator, freelist[i].capacity * sizeof(hamt_node*));
+        h->table_cache[i].capacity = (size_t) cachesize * freelist_bucket_frequencies[i];
+        h->table_cache[i].size = 0;
+        h->table_cache[i].ptrs = mem_alloc(h->ator, h->table_cache[i].capacity * sizeof(hamt_node*));
     }
-    freelist_initialized = true;
-    // table_freelist_print();
+    h->table_cache_initialized = true;
 }
 
-void table_freelist_destroy()
+void table_freelist_destroy(struct hamt_impl *h)
 {
-    // table_freelist_print();
     for (size_t i = 0; i < 32; ++i) {
-        free(freelist[i].ptrs);
+        free(h->table_cache[i].ptrs);
     }
-    freelist_initialized = false;
+    h->table_cache_initialized = false;
 }
 
-void hamt_cache_init(struct hamt_allocator *ator, size_t cachesize)
+void hamt_cache_init(struct hamt_impl *h, size_t cachesize)
 {
-    table_freelist_init(ator, cachesize);
+    table_freelist_init(h, cachesize);
 }
 
-void hamt_cache_destroy()
+void hamt_cache_destroy(struct hamt_impl *h)
 {
-    table_freelist_print();
-    table_freelist_destroy();
+    table_freelist_print(h); // fixme: remove
+    table_freelist_destroy(h);
 }
 
-hamt_node *table_allocate(struct hamt_allocator *ator, size_t size)
+hamt_node *table_allocate(struct hamt_impl *h, size_t size)
 {
-    if (freelist_initialized) {
+    if (h->table_cache_initialized) {
         if (size > 0) {
             size_t index = size - 1;
-            if (freelist[index].size > 0) {
-                size_t pos = freelist[index].size - 1;
-                freelist[index].size--;
-                return freelist[index].ptrs[pos];
+            if (h->table_cache[index].size > 0) {
+                size_t pos = h->table_cache[index].size - 1;
+                h->table_cache[index].size--;
+                return h->table_cache[index].ptrs[pos];
             }
         }
 
     }
-    return (struct hamt_node *)mem_alloc(ator, (size * sizeof(struct hamt_node)));
+    return (struct hamt_node *)mem_alloc(h->ator, (size * sizeof(struct hamt_node)));
 }
 
-void table_free(struct hamt_allocator *ator, struct hamt_node *ptr, size_t size)
+void table_free(struct hamt_impl *h, struct hamt_node *ptr, size_t size)
 {
-    if (freelist_initialized) {
+    if (h->table_cache_initialized) {
         size_t index = size - 1;
-        if (size && ((freelist[index].size + 1) < freelist[index].capacity)) {
-            size_t pos = freelist[index].size;
-            freelist[index].ptrs[pos] = ptr;
-            freelist[index].size++;
+        if (size && ((h->table_cache[index].size + 1) < h->table_cache[index].capacity)) {
+            size_t pos = h->table_cache[index].size;
+            h->table_cache[index].ptrs[pos] = ptr;
+            h->table_cache[index].size++;
             return;
         }
     }
-    mem_free(ator, ptr);
+    mem_free(h->ator, ptr);
 }
 
-hamt_node *table_extend(struct hamt_allocator *ator, hamt_node *anchor,
+hamt_node *table_extend(struct hamt_impl *h, hamt_node *anchor,
                         size_t n_rows, uint32_t index, uint32_t pos)
 {
-    hamt_node *new_table = table_allocate(ator, n_rows + 1);
+    hamt_node *new_table = table_allocate(h, n_rows + 1);
     if (!new_table)
         return NULL;
     if (n_rows > 0) {
@@ -230,13 +232,13 @@ hamt_node *table_extend(struct hamt_allocator *ator, hamt_node *anchor,
                (n_rows - pos) * sizeof(hamt_node));
     }
     assert(!is_value(VALUE(anchor)) && "URGS");
-    table_free(ator, TABLE(anchor), n_rows);
+    table_free(h, TABLE(anchor), n_rows);
     TABLE(anchor) = new_table;
     INDEX(anchor) |= (1 << index);
     return anchor;
 }
 
-hamt_node *table_shrink(struct hamt_allocator *ator, hamt_node *anchor,
+hamt_node *table_shrink(struct hamt_impl *h, hamt_node *anchor,
                         size_t n_rows, uint32_t index, uint32_t pos)
 {
     /* debug assertions */
@@ -247,7 +249,7 @@ hamt_node *table_shrink(struct hamt_allocator *ator, hamt_node *anchor,
     hamt_node *new_table = NULL;
     uint32_t new_index = 0;
     if (n_rows > 0) {
-        new_table = table_allocate(ator, n_rows - 1);
+        new_table = table_allocate(h, n_rows - 1);
         if (!new_table)
             return NULL;
         new_index = INDEX(anchor) & ~(1 << index);
@@ -255,13 +257,13 @@ hamt_node *table_shrink(struct hamt_allocator *ator, hamt_node *anchor,
         memcpy(&new_table[pos], &TABLE(anchor)[pos + 1],
                (n_rows - pos - 1) * sizeof(hamt_node));
     }
-    table_free(ator, TABLE(anchor), n_rows);
+    table_free(h, TABLE(anchor), n_rows);
     INDEX(anchor) = new_index;
     TABLE(anchor) = new_table;
     return anchor;
 }
 
-hamt_node *table_gather(struct hamt_allocator *ator, hamt_node *anchor,
+hamt_node *table_gather(struct hamt_impl *h, hamt_node *anchor,
                         uint32_t pos)
 {
     /* debug assertions */
@@ -276,14 +278,14 @@ hamt_node *table_gather(struct hamt_allocator *ator, hamt_node *anchor,
     hamt_node *table = TABLE(anchor);
     KEY(anchor) = table[pos].as.kv.key;
     VALUE(anchor) = table[pos].as.kv.value; /* already tagged */
-    table_free(ator, table, n_rows);
+    table_free(h, table, n_rows);
     return anchor;
 }
 
-hamt_node *table_dup(struct hamt_allocator *ator, hamt_node *anchor)
+hamt_node *table_dup(struct hamt_impl *h, hamt_node *anchor)
 {
     int n_rows = get_popcount(INDEX(anchor));
-    hamt_node *new_table = table_allocate(ator, n_rows);
+    hamt_node *new_table = table_allocate(h, n_rows);
     if (new_table) {
         memcpy(&new_table[0], &TABLE(anchor)[0], n_rows * sizeof(hamt_node));
     }
@@ -300,6 +302,8 @@ HAMT hamt_create(hamt_key_hash_fn key_hash, hamt_cmp_fn key_cmp,
     trie->size = 0;
     trie->key_hash = key_hash;
     trie->key_cmp = key_cmp;
+    // memset(trie->stats.table_sizes, 0, 32*sizeof(size_t));
+    trie->stats = (struct hamt_stats) { .table_sizes = {0} };
     return trie;
 }
 
@@ -312,12 +316,13 @@ HAMT hamt_dup(HAMT h)
     trie->size = h->size;
     trie->key_hash = h->key_hash;
     trie->key_cmp = h->key_cmp;
+    memcpy(&trie->stats, &h->stats, sizeof(struct hamt_stats));
     return trie;
 }
 
-static const hamt_node *insert_kv(hamt_node *anchor, hash_state *hash,
-                                  void *key, void *value,
-                                  struct hamt_allocator *ator)
+static const hamt_node *insert_kv(struct hamt_impl *h,
+                                  hamt_node *anchor, hash_state *hash,
+                                  void *key, void *value)
 {
     /* calculate position in new table */
     uint32_t ix = hash_get_index(hash);
@@ -325,7 +330,7 @@ static const hamt_node *insert_kv(hamt_node *anchor, hash_state *hash,
     int pos = get_pos(ix, new_index);
     /* extend table */
     size_t n_rows = get_popcount(INDEX(anchor));
-    anchor = table_extend(ator, anchor, n_rows, ix, pos);
+    anchor = table_extend(h, anchor, n_rows, ix, pos);
     if (!anchor)
         return NULL;
     hamt_node *new_table = TABLE(anchor);
@@ -336,9 +341,9 @@ static const hamt_node *insert_kv(hamt_node *anchor, hash_state *hash,
     return &new_table[pos];
 }
 
-static const hamt_node *insert_table(hamt_node *anchor, hash_state *hash,
-                                     void *key, void *value,
-                                     struct hamt_allocator *ator)
+static const hamt_node *insert_table(struct hamt_impl *h,
+                                     hamt_node *anchor, hash_state *hash,
+                                     void *key, void *value)
 {
     /* FIXME: check for alloc failure and bail out correctly (deleting the
      *        incomplete subtree */
@@ -358,7 +363,7 @@ static const hamt_node *insert_table(hamt_node *anchor, hash_state *hash,
     uint32_t next_index = hash_get_index(next_hash);
     uint32_t x_next_index = hash_get_index(x_next_hash);
     while (x_next_index == next_index) {
-        TABLE(anchor) = table_allocate(ator, 1);
+        TABLE(anchor) = table_allocate(h, 1);
         INDEX(anchor) = (1 << next_index);
         next_hash = hash_next(next_hash);
         x_next_hash = hash_next(x_next_hash);
@@ -368,7 +373,7 @@ static const hamt_node *insert_table(hamt_node *anchor, hash_state *hash,
     }
     /* the hashes are different, let's allocate a table with two
      * entries to store the existing and new values */
-    TABLE(anchor) = table_allocate(ator, 2);
+    TABLE(anchor) = table_allocate(h, 2);
     INDEX(anchor) = (1 << next_index) | (1 << x_next_index);
     /* determine the proper position in the allocated table */
     int x_pos = get_pos(x_next_index, INDEX(anchor));
@@ -385,17 +390,17 @@ static const hamt_node *insert_table(hamt_node *anchor, hash_state *hash,
     return &TABLE(anchor)[pos];
 }
 
-static search_result search_recursive(hamt_node *anchor, hash_state *hash,
+static search_result search_recursive(struct hamt_impl *h,
+                                      hamt_node *anchor, hash_state *hash,
                                       hamt_cmp_fn cmp_eq, const void *key,
-                                      hamt_node *path,
-                                      struct hamt_allocator *ator)
+                                      hamt_node *path)
 {
     assert(!is_value(VALUE(anchor)) &&
            "Invariant: path copy requires an internal node");
     hamt_node *copy = path;
     if (path) {
         /* copy the table we're pointing to */
-        TABLE(copy) = table_dup(ator, anchor);
+        TABLE(copy) = table_dup(h, anchor);
         INDEX(copy) = INDEX(anchor);
         assert(!is_value(VALUE(copy)) && "Copy caused a leaf/internal switch");
     } else {
@@ -429,8 +434,8 @@ static search_result search_recursive(hamt_node *anchor, hash_state *hash,
             /* For table entries, recurse to the next level */
             assert(TABLE(next) != NULL &&
                    "invariant: table ptrs must not be NULL");
-            return search_recursive(next, hash_next(hash), cmp_eq, key,
-                                    path ? next : NULL, ator);
+            return search_recursive(h, next, hash_next(hash), cmp_eq, key,
+                                    path ? next : NULL);
         }
     }
     /* expected index is not set, terminate search */
@@ -448,8 +453,7 @@ const void *hamt_get(const HAMT trie, void *key)
                                      .hash = trie->key_hash(key, 0),
                                      .depth = 0,
                                      .shift = 0};
-    search_result sr = search_recursive(trie->root, hash, trie->key_cmp, key,
-                                        NULL, trie->ator);
+    search_result sr = search_recursive(trie, trie->root, hash, trie->key_cmp, key, NULL);
     if (sr.status == SEARCH_SUCCESS) {
         return untagged(sr.VALUE(value));
     }
@@ -465,7 +469,7 @@ static const hamt_node *set(HAMT h, hamt_node *anchor, hamt_key_hash_fn hash_fn,
                                      .depth = 0,
                                      .shift = 0};
     search_result sr =
-        search_recursive(anchor, hash, cmp_fn, key, NULL, h->ator);
+        search_recursive(h, anchor, hash, cmp_fn, key, NULL);
     const hamt_node *inserted;
     switch (sr.status) {
     case SEARCH_SUCCESS:
@@ -473,13 +477,13 @@ static const hamt_node *set(HAMT h, hamt_node *anchor, hamt_key_hash_fn hash_fn,
         inserted = sr.value;
         break;
     case SEARCH_FAIL_NOTFOUND:
-        if ((inserted = insert_kv(sr.anchor, sr.hash, key, value, h->ator)) !=
+        if ((inserted = insert_kv(h, sr.anchor, sr.hash, key, value)) !=
             NULL) {
             h->size += 1;
         }
         break;
     case SEARCH_FAIL_KEYMISMATCH:
-        if ((inserted = insert_table(sr.value, sr.hash, key, value, h->ator)) !=
+        if ((inserted = insert_table(h, sr.value, sr.hash, key, value)) !=
             NULL) {
             h->size += 1;
         }
@@ -495,13 +499,12 @@ const void *hamt_set(HAMT trie, void *key, void *value)
     return VALUE(n);
 }
 
-static path_result search(hamt_node *anchor, hash_state *hash,
-                          hamt_cmp_fn cmp_eq, const void *key,
-                          struct hamt_allocator *ator)
+static path_result search(struct hamt_impl *h, hamt_node *anchor, hash_state *hash,
+                          hamt_cmp_fn cmp_eq, const void *key)
 {
     path_result pr;
-    pr.root = mem_alloc(ator, sizeof(hamt_node));
-    pr.sr = search_recursive(anchor, hash, cmp_eq, key, pr.root, ator);
+    pr.root = mem_alloc(h->ator, sizeof(hamt_node));
+    pr.sr = search_recursive(h, anchor, hash, cmp_eq, key, pr.root);
     return pr;
 }
 
@@ -513,19 +516,19 @@ const HAMT hamt_pset(HAMT h, void *key, void *value)
                                      .depth = 0,
                                      .shift = 0};
     HAMT cp = hamt_dup(h);
-    path_result pr = search(h->root, hash, h->key_cmp, key, h->ator);
+    path_result pr = search(h, h->root, hash, h->key_cmp, key);
     cp->root = pr.root;
     switch (pr.sr.status) {
     case SEARCH_SUCCESS:
         pr.sr.VALUE(value) = tagged(value);
         break;
     case SEARCH_FAIL_NOTFOUND:
-        if (insert_kv(pr.sr.anchor, pr.sr.hash, key, value, h->ator) != NULL) {
+        if (insert_kv(h, pr.sr.anchor, pr.sr.hash, key, value) != NULL) {
             cp->size += 1;
         }
         break;
     case SEARCH_FAIL_KEYMISMATCH:
-        if (insert_table(pr.sr.value, pr.sr.hash, key, value, h->ator) !=
+        if (insert_table(h, pr.sr.value, pr.sr.hash, key, value) !=
             NULL) {
             cp->size += 1;
         }
@@ -534,17 +537,16 @@ const HAMT hamt_pset(HAMT h, void *key, void *value)
     return cp;
 }
 
-static remove_result rem_recursive(hamt_node *root, hamt_node *anchor,
+static remove_result rem_recursive(struct hamt_impl *h, hamt_node *root, hamt_node *anchor,
                                    hash_state *hash, hamt_cmp_fn cmp_eq,
-                                   const void *key, hamt_node *path,
-                                   struct hamt_allocator *ator)
+                                   const void *key, hamt_node *path)
 {
     assert(!is_value(VALUE(anchor)) &&
            "Invariant: removal requires an internal node");
     /* copy the table we're pointing to */
     hamt_node *copy = path;
     if (path) {
-        TABLE(copy) = table_dup(ator, anchor);
+        TABLE(copy) = table_dup(h, anchor);
         INDEX(copy) = INDEX(anchor);
         assert(!is_value(VALUE(copy)) && "Copy caused a leaf/internal switch");
     } else {
@@ -569,19 +571,18 @@ static remove_result rem_recursive(hamt_node *root, hamt_node *anchor,
                  */
                 if (n_rows > 2 || (n_rows >= 1 && root == copy)) {
                     copy =
-                        table_shrink(ator, copy, n_rows, expected_index, pos);
+                        table_shrink(h, copy, n_rows, expected_index, pos);
                 } else if (n_rows == 2) {
                     /* if both rows are value rows, gather, dropping the current
                      * row */
                     hamt_node *other = &TABLE(copy)[!pos];
                     if (is_value(VALUE(other))) {
-                        copy = table_gather(ator, copy, !pos);
+                        copy = table_gather(h, copy, !pos);
                         return (remove_result){.status = REMOVE_GATHERED,
                                                .value = value};
                     } else {
                         /* otherwise shrink the node to n_rows == 1 */
-                        copy = table_shrink(ator, copy, n_rows, expected_index,
-                                            pos);
+                        copy = table_shrink(h, copy, n_rows, expected_index, pos);
                     }
                 }
                 return (remove_result){.status = REMOVE_SUCCESS,
@@ -594,14 +595,14 @@ static remove_result rem_recursive(hamt_node *root, hamt_node *anchor,
             assert(TABLE(next) != NULL &&
                    "invariant: table ptrs must not be NULL");
             remove_result result =
-                rem_recursive(root, next, hash_next(hash), cmp_eq, key,
-                              path ? next : NULL, ator);
+                rem_recursive(h, root, next, hash_next(hash), cmp_eq, key,
+                              path ? next : NULL);
             if (next != TABLE(root) && result.status == REMOVE_GATHERED) {
                 /* remove dangling internal nodes: check if we need to
                  * propagate the gathering of the key-value entry */
                 int n_rows = get_popcount(INDEX(copy));
                 if (n_rows == 1) {
-                    copy = table_gather(ator, copy, 0);
+                    copy = table_gather(h, copy, 0);
                     return (remove_result){.status = REMOVE_GATHERED,
                                            .value = result.value};
                 }
@@ -613,13 +614,12 @@ static remove_result rem_recursive(hamt_node *root, hamt_node *anchor,
     return (remove_result){.status = REMOVE_NOTFOUND, .value = NULL};
 }
 
-static path_result rem(hamt_node *root, hamt_node *anchor, hash_state *hash,
-                       hamt_cmp_fn cmp_eq, const void *key,
-                       struct hamt_allocator *ator)
+static path_result rem(struct hamt_impl *h, hamt_node *root, hamt_node *anchor, hash_state *hash,
+                       hamt_cmp_fn cmp_eq, const void *key)
 {
     path_result pr;
-    pr.root = mem_alloc(ator, sizeof(hamt_node));
-    pr.rr = rem_recursive(pr.root, anchor, hash, cmp_eq, key, pr.root, ator);
+    pr.root = mem_alloc(h->ator, sizeof(hamt_node));
+    pr.rr = rem_recursive(h, pr.root, anchor, hash, cmp_eq, key, pr.root);
     return pr;
 }
 
@@ -630,8 +630,8 @@ void *hamt_remove(HAMT trie, void *key)
                                      .hash = trie->key_hash(key, 0),
                                      .depth = 0,
                                      .shift = 0};
-    remove_result rr = rem_recursive(trie->root, trie->root, hash,
-                                     trie->key_cmp, key, NULL, trie->ator);
+    remove_result rr = rem_recursive(trie, trie->root, trie->root, hash,
+                                     trie->key_cmp, key, NULL);
     if (rr.status == REMOVE_SUCCESS || rr.status == REMOVE_GATHERED) {
         trie->size -= 1;
         return untagged(rr.value);
@@ -648,31 +648,33 @@ const HAMT hamt_premove(const HAMT trie, void *key)
                                      .shift = 0};
     HAMT cp = hamt_dup(trie);
     path_result pr =
-        rem(trie->root, trie->root, hash, trie->key_cmp, key, trie->ator);
+        rem(trie, trie->root, trie->root, hash, trie->key_cmp, key);
     cp->root = pr.root;
     if (pr.rr.status == REMOVE_SUCCESS || pr.rr.status == REMOVE_GATHERED) {
         cp->size -= 1;
     }
     return cp;
 }
-void delete (hamt_node *anchor, struct hamt_allocator *ator)
+
+/* delete recursively from anchor */
+void delete_recursive(struct hamt_impl *h, hamt_node *anchor)
 {
     if (TABLE(anchor)) {
         assert(!is_value(VALUE(anchor)) && "delete requires an internal node");
         size_t n = get_popcount(INDEX(anchor));
         for (size_t i = 0; i < n; ++i) {
             if (!is_value(TABLE(anchor)[i].as.kv.value)) {
-                delete (&TABLE(anchor)[i], ator);
+                delete_recursive(h, &TABLE(anchor)[i]);
             }
         }
-        table_free(ator, TABLE(anchor), n);
+        table_free(h, TABLE(anchor), n);
         TABLE(anchor) = NULL;
     }
 }
 
 void hamt_delete(HAMT h)
 {
-    delete (h->root, h->ator);
+    delete_recursive(h, h->root);
     mem_free(h->ator, h->root);
     mem_free(h->ator, h);
 }
