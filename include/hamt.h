@@ -20,7 +20,10 @@ extern struct hamt_allocator hamt_allocator_default;
 
 HAMT hamt_create(hamt_key_hash_fn key_hash, hamt_cmp_fn key_cmp,
                  struct hamt_allocator *ator);
-void hamt_delete(HAMT);
+void hamt_delete(HAMT trie);
+
+void hamt_cache_init(HAMT trie, size_t cachesize);
+void hamt_cache_destroy(HAMT trie);
 
 const void *hamt_get(const HAMT trie, void *key);
 const void *hamt_set(HAMT trie, void *key, void *value);

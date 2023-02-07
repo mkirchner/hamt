@@ -182,7 +182,6 @@ void hamt_cache_init(struct hamt_impl *h, size_t cachesize)
 
 void hamt_cache_destroy(struct hamt_impl *h)
 {
-    table_freelist_print(h); // fixme: remove
     table_freelist_destroy(h);
 }
 
