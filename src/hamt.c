@@ -606,6 +606,19 @@ void hamt_delete(HAMT h)
 
 size_t hamt_size(const HAMT trie) { return trie->size; }
 
+/** Iterators
+ *
+ * Iterators traverse the HAMT in DFS mode; each iterator instance maintains a
+ * "call stack" of nodes encountered so far. Nodes are represented as a pair
+ * of (a) a pointer to a `hamt_node` (aka an anchor) and a position that
+ * indexes the current position in the table referred to by the anchor.
+ *
+ * The "call stack" is implemented with dynamic memory allocation to guard
+ * against outliers in tree depth; that said, we expect the average stack
+ * depth to be in the order of log(n) (where n is the number of items in the
+ * HAMT)
+ */
+
 struct hamt_iterator_item {
     hamt_node *anchor;
     size_t pos;
@@ -615,40 +628,38 @@ struct hamt_iterator_item {
 struct hamt_iterator_impl {
     HAMT trie;
     hamt_node *cur;
-    struct hamt_iterator_item *head, *tail;
+    struct hamt_iterator_item *tos;  /* top of stack */
 };
 
 static struct hamt_iterator_item *
 iterator_push_item(hamt_iterator it, hamt_node *anchor, size_t pos)
 {
-    /* append at the end */
+    /* push new item onto top of stack */
     struct hamt_iterator_item *new_item =
         mem_alloc(it->trie->ator, sizeof(struct hamt_iterator_item));
     if (new_item) {
         new_item->anchor = anchor;
         new_item->pos = pos;
         new_item->next = NULL;
-        if (it->tail) {
-            it->tail->next = new_item;
-        } else {
-            /* first insert */
-            it->tail = it->head = new_item;
-        }
+        new_item->next = it->tos;
+        it->tos = new_item;
     }
     return new_item;
 }
 
 static struct hamt_iterator_item *iterator_peek_item(hamt_iterator it)
 {
-    return it->head;
+    return it->tos;
 }
 
 static struct hamt_iterator_item *iterator_pop_item(hamt_iterator it)
 {
-    /* pop from front */
-    struct hamt_iterator_item *top = it->head;
-    it->head = it->head->next;
-    return top;
+    /* pop off top of stack */
+    struct hamt_iterator_item *item = it->tos;
+    if (item) {
+        it->tos = it->tos->next;
+    }
+    return item;
 }
 
 hamt_iterator hamt_it_create(const HAMT trie)
@@ -656,17 +667,16 @@ hamt_iterator hamt_it_create(const HAMT trie)
     struct hamt_iterator_impl *it =
         mem_alloc(trie->ator, sizeof(struct hamt_iterator_impl));
     it->trie = trie;
+    it->tos = NULL;
     it->cur = NULL;
-    it->head = it->tail = NULL;
     iterator_push_item(it, trie->root, 0);
-    it->head = it->tail;
     hamt_it_next(it);
     return it;
 }
 
 void hamt_it_delete(hamt_iterator it)
 {
-    struct hamt_iterator_item *p = it->head;
+    struct hamt_iterator_item *p = it->tos;
     struct hamt_iterator_item *tmp;
     while (p) {
         tmp = p;
@@ -682,24 +692,31 @@ hamt_iterator hamt_it_next(hamt_iterator it)
 {
     struct hamt_iterator_item *p;
     while (it && (p = iterator_peek_item(it)) != NULL) {
-        int n_rows = get_popcount(INDEX(p->anchor));
-        for (int i = p->pos; i < n_rows; ++i) {
-            hamt_node *cur = &TABLE(p->anchor)[i];
+        /* determine number of entries / size of the table */
+        int n_pos = get_popcount(INDEX(p->anchor));
+        /* start from the table index we left off from */
+        while (p->pos < n_pos) {
+            /* get a pointer to the current subtrie */
+            hamt_node *cur = &TABLE(p->anchor)[p->pos];
+            /* increment the row count */
+            p->pos++;
+            /* check if we have a subtable or a value */
             if (is_value(VALUE(cur))) {
-                if (i < n_rows - 1) {
-                    p->pos = i + 1;
-                } else {
-                    iterator_pop_item(it);
-                }
+                /* cur refers to a value; set the iterator and bail */
                 it->cur = cur;
                 return it;
+            } else {
+                /* cur is a pointer to a subtable; push the item on 
+                 * the iterator stack and recurse */
+                iterator_push_item(it, cur, 0);
+                return hamt_it_next(it);
             }
-            /* cur is a pointer to a subtable */
-            iterator_push_item(it, cur, 0);
         }
+        /* remove table from stack when all rows have been dealt with */
         iterator_pop_item(it);
+        mem_free(it->trie->ator, p);
     }
-    it->cur = NULL;
+    if (it) it->cur = NULL;
     return it;
 }
 
