@@ -103,7 +103,7 @@ static inline hash_state *hash_next(hash_state *h)
 {
     h->depth += 1;
     h->shift += 5;
-    if (h->shift > 30) {
+    if (h->shift > 25) {
         h->hash = h->hash_fn(h->key, h->depth / 5);
         h->shift = 0;
     }
