@@ -674,6 +674,41 @@ MU_TEST_CASE(test_iterators)
     return 0;
 }
 
+MU_TEST_CASE(test_iterators_1m)
+{
+    /* Creates a HAMT with 1M items; walks the HAMT
+     * using an iterator and compares the iterator 
+     * count with the HAMT tree size. */
+    printf(". testing iterators with 1M items\n");
+    size_t n_items = 1e6;
+    char **words = NULL;
+    /* get the data */
+    words_load_numbers(&words, 0, n_items);
+    /* create and load the HAMT */
+    struct hamt_impl *t;
+    t = hamt_create(my_keyhash_string, my_keycmp_string,
+                    &hamt_allocator_default);
+    for (size_t i = 0; i < n_items; i++) {
+        hamt_set(t, words[i], words[i]);
+    }
+    /* create an iterator, walk the entire trie and
+     * count how often we can increment the iterator before
+     * exhausting it */
+    hamt_iterator it = hamt_it_create(t);
+    size_t count = 0;
+    while (hamt_it_valid(it)) {
+        count += 1;
+        hamt_it_next(it);
+    }
+    /* make sure the iterator sees as many items as
+     * the HAMT is aware of */
+    // printf("size: %lu, count: %lu\n", hamt_size(t), count);
+    MU_ASSERT(count == hamt_size(t), "Wrong number of items in iteration");
+    /* clean up */
+    hamt_it_delete(it);
+    hamt_delete(t);
+    return 0;
+}
 MU_TEST_CASE(test_persistent_set)
 {
     printf(". testing set/insert w/ structural sharing\n");
@@ -861,6 +896,7 @@ MU_TEST_SUITE(test_suite)
     MU_RUN_TEST(test_create_delete);
     MU_RUN_TEST(test_size);
     MU_RUN_TEST(test_iterators);
+    MU_RUN_TEST(test_iterators_1m);
     // persistent data structure tests
     MU_RUN_TEST(test_persistent_set);
     MU_RUN_TEST(test_persistent_aspell_dict_en);
