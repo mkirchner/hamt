@@ -1,4 +1,5 @@
 #include "minunit.h"
+#include <math.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -401,7 +402,7 @@ MU_TEST_CASE(test_aspell_dict_en)
         MU_ASSERT(hamt_get(t, words[i]) != NULL, "could not find expected key");
     }
 
-    /* Check if "bluism" has search depth 7 */
+    /* Check if "bluism" has search depth 6 */
     char target[] = "bluism";
     hash_state *hash = &(hash_state){.key = target,
                                      .hash_fn = my_keyhash_string,
@@ -415,7 +416,7 @@ MU_TEST_CASE(test_aspell_dict_en)
 
     MU_ASSERT(value, "failed to retrieve existing value");
     MU_ASSERT(strcmp(value, target) == 0, "invalid value");
-    MU_ASSERT(sr.hash->depth == 7, "invalid depth");
+    MU_ASSERT(sr.hash->depth == 6, "invalid depth");
 
 
     /*
@@ -434,6 +435,30 @@ MU_TEST_CASE(test_aspell_dict_en)
 
     hamt_delete(t);
     words_free(words, WORDS_MAX);
+    return 0;
+}
+ MU_TEST_SUITE(test_setget_large_scale)
+{
+    printf(". testing set/get/get for 1M items\n");
+
+    size_t n_items = 1e6;
+    char **words = NULL;
+    words_load_numbers(&words, 0, n_items);
+
+    HAMT t;
+    t = hamt_create(my_keyhash_string, my_keycmp_string,
+                    &hamt_allocator_default);
+    for (size_t i = 0; i < n_items; i++) {
+        hamt_set(t, words[i], words[i]);
+        MU_ASSERT(hamt_get(t, words[i]),
+            "Failed to get key we just pushed");
+    }
+    for (size_t i = 0; i < n_items; i++) {
+        MU_ASSERT(hamt_get(t, words[i]),
+            "Failed to get key we pushed earlier");
+    }
+    hamt_delete(t);
+    words_free(words, n_items);
     return 0;
 }
 
@@ -708,7 +733,7 @@ MU_TEST_CASE(test_persistent_aspell_dict_en)
         MU_ASSERT(hamt_get(t, words[i]) != NULL, "could not find expected key");
     }
 
-    /* Check if "bluism" has search depth 7 */
+    /* Check if "bluism" has search depth 6 */
     char target[] = "bluism";
     hash_state *hash = &(hash_state){.key = target,
                                      .hash_fn = my_keyhash_string,
@@ -722,7 +747,7 @@ MU_TEST_CASE(test_persistent_aspell_dict_en)
 
     MU_ASSERT(value, "failed to retrieve existing value");
     MU_ASSERT(strcmp(value, target) == 0, "invalid value");
-    MU_ASSERT(sr.hash->depth == 7, "invalid depth");
+    MU_ASSERT(sr.hash->depth == 6, "invalid depth");
 
     words_free(words, WORDS_MAX);
     /* There is no way to cleanly free the structurally shared
@@ -771,6 +796,51 @@ MU_TEST_CASE(test_persistent_remove_aspell_dict_en)
     return 0;
 }
 
+MU_TEST_CASE(test_tree_depth)
+{
+    printf(". testing tree depth linearity assumptions");
+
+    size_t n_items = 1e6;
+    char **words = NULL;
+    HAMT t;
+
+    words_load_numbers(&words, 0, n_items);
+
+    t = hamt_create(my_keyhash_string, my_keycmp_string,
+                    &hamt_allocator_default);
+    for (size_t i = 0; i < n_items; i++) {
+        hamt_set(t, words[i], words[i]);
+    }
+
+    /* Calculate the avg tree depth across all items */
+    double avg_depth = 0.0;
+    size_t max_depth = 0;
+    for (size_t i = 0; i < n_items; i++) {
+        hash_state *hash = &(hash_state){.key = words[i],
+                                         .hash_fn = my_keyhash_string,
+                                         .hash = my_keyhash_string(words[i], 0),
+                                         .depth = 0,
+                                         .shift = 0};
+        search_result sr =
+            search_recursive(t, t->root, hash, t->key_cmp, words[i], NULL);
+        if (sr.status != SEARCH_SUCCESS) {
+            printf("tree search failed for: %s\n", words[i]);
+            continue;
+        }
+        // in order to calculate depth, item must exist
+        MU_ASSERT(sr.status == SEARCH_SUCCESS, "tree depth search failure");
+        avg_depth = (avg_depth * i + sr.hash->depth) / (i + 1);
+        if (sr.hash->depth > max_depth) {
+            max_depth = sr.hash->depth;
+        }
+    }
+
+    hamt_delete(t);
+    words_free(words, n_items);
+    printf(" (avg tree depth w/ %lu items: %f, expected %f, max: %lu)\n",
+        n_items, avg_depth, log2(n_items) / 5.0, max_depth); /* log_32(n_items) */
+    return 0;
+}
 int mu_tests_run = 0;
 
 MU_TEST_SUITE(test_suite)
@@ -784,6 +854,7 @@ MU_TEST_SUITE(test_suite)
     MU_RUN_TEST(test_set_whole_enchilada_00);
     MU_RUN_TEST(test_set_stringkeys);
     MU_RUN_TEST(test_aspell_dict_en);
+    MU_RUN_TEST(test_setget_large_scale);
     MU_RUN_TEST(test_shrink_table);
     MU_RUN_TEST(test_gather_table);
     MU_RUN_TEST(test_remove);
@@ -794,6 +865,7 @@ MU_TEST_SUITE(test_suite)
     MU_RUN_TEST(test_persistent_set);
     MU_RUN_TEST(test_persistent_aspell_dict_en);
     MU_RUN_TEST(test_persistent_remove_aspell_dict_en);
+    MU_RUN_TEST(test_tree_depth);
     // add more tests here
     return 0;
 }
