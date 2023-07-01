@@ -424,6 +424,13 @@ const void *hamt_set(HAMT trie, void *key, void *value)
     return VALUE(n);
 }
 
+const void *hamt_set2(HAMT trie, void *key, void *value)
+{
+    const hamt_node *n =
+        set(trie, trie->root, trie->key_hash, trie->key_cmp, key, value);
+    return VALUE(n);
+}
+
 static path_result search(struct hamt_impl *h, hamt_node *anchor, hash_state *hash,
                           hamt_cmp_fn cmp_eq, const void *key)
 {
