@@ -203,7 +203,7 @@ MU_TEST_CASE(test_search)
     t_root[2].as.kv.key = &keys[0];
     t_root[2].as.kv.value = tagged(&values[0]);
 
-    struct hamt_impl t;
+    struct hamt t;
     t.key_cmp = my_strncmp_1;
     t.ator = &hamt_allocator_default;
     t.root = mem_alloc(t.ator, sizeof(hamt_node));
@@ -254,7 +254,7 @@ MU_TEST_CASE(test_search)
 MU_TEST_CASE(test_set_with_collisions)
 {
     printf(". testing set/insert w/ forced key collision\n");
-    struct hamt_impl *t =
+    struct hamt *t =
         hamt_create(my_hash_1, my_strncmp_1, &hamt_allocator_default);
 
     /* example 1: no hash collisions */
@@ -295,7 +295,7 @@ MU_TEST_CASE(test_set_whole_enchilada_00)
         int value;
     } data[5] = {{'0', 0}, {'2', 2}, {'4', 4}, {'7', 7}, {'8', 8}};
 
-    struct hamt_impl *t =
+    struct hamt *t =
         hamt_create(my_hash_1, my_strncmp_1, &hamt_allocator_default);
     for (size_t i = 0; i < 5; ++i) {
         set(t, t->root, t->key_hash, t->key_cmp, &data[i].key, &data[i].value);
@@ -354,7 +354,7 @@ MU_TEST_CASE(test_set_stringkeys)
     } data[6] = {{"humpty", 1}, {"dumpty", 2}, {"sat", 3},
                  {"on", 4},     {"the", 5},    {"wall", 6}};
 
-    struct hamt_impl *t = hamt_create(my_keyhash_string, my_keycmp_string,
+    struct hamt *t = hamt_create(my_keyhash_string, my_keycmp_string,
                                       &hamt_allocator_default);
     for (size_t i = 0; i < 6; ++i) {
         // printf("setting (%s, %d)\n", data[i].key, data[i].value);
@@ -388,7 +388,7 @@ MU_TEST_CASE(test_aspell_dict_en)
     printf(". testing large-scale set/insert w/ string keys\n");
 
     char **words = NULL;
-    HAMT t;
+    struct hamt *t;
 
     words_load(&words, WORDS_MAX);
     t = hamt_create(my_keyhash_string, my_keycmp_string,
@@ -445,7 +445,7 @@ MU_TEST_CASE(test_aspell_dict_en)
     char **words = NULL;
     words_load_numbers(&words, 0, n_items);
 
-    HAMT t;
+    struct hamt *t;
     t = hamt_create(my_keyhash_string, my_keycmp_string,
                     &hamt_allocator_default);
     for (size_t i = 0; i < n_items; i++) {
@@ -473,8 +473,8 @@ MU_TEST_CASE(test_shrink_table)
     } data[N] = {
         {"0", 0, 1}, {"2", 2, 3}, {"4", 4, 4}, {"7", 7, 12}, {"8", 8, 22}};
 
-    /* dummy HAMT so we can pass the allocator info */
-    HAMT t = hamt_create(my_keyhash_string, my_keycmp_string,
+    /* dummy struct hamt *so we can pass the allocator info */
+    struct hamt *t = hamt_create(my_keyhash_string, my_keycmp_string,
                          &hamt_allocator_default);
 
     /* create table w/ 5 entries and delete each position */
@@ -521,8 +521,8 @@ MU_TEST_CASE(test_gather_table)
         int index;
     } data[N] = {{"0", 0, 1}, {"2", 2, 3}};
 
-    /* dummy HAMT so we can pass the allocator info */
-    HAMT t = hamt_create(my_keyhash_string, my_keycmp_string,
+    /* dummy struct hamt *so we can pass the allocator info */
+    struct hamt *t = hamt_create(my_keyhash_string, my_keycmp_string,
                          &hamt_allocator_default);
 
     hamt_node *a0 = mem_alloc(t->ator, sizeof(hamt_node));
@@ -553,7 +553,7 @@ MU_TEST_CASE(test_remove)
     } data[N] = {{"humpty", 1}, {"dumpty", 2}, {"sat", 3},
                  {"on", 4},     {"the", 5},    {"wall", 6}};
 
-    struct hamt_impl *t = hamt_create(my_keyhash_string, my_keycmp_string,
+    struct hamt *t = hamt_create(my_keyhash_string, my_keycmp_string,
                                       &hamt_allocator_default);
 
     for (size_t k = 0; k < 3; ++k) {
@@ -584,7 +584,7 @@ MU_TEST_CASE(test_remove)
 MU_TEST_CASE(test_create_delete)
 {
     printf(". testing create/delete cycle\n");
-    struct hamt_impl *t;
+    struct hamt *t;
     t = hamt_create(my_keyhash_string, my_keycmp_string,
                     &hamt_allocator_default);
     hamt_delete(t);
@@ -606,7 +606,7 @@ MU_TEST_CASE(test_create_delete)
 MU_TEST_CASE(test_size)
 {
     printf(". testing tree size tracking\n");
-    struct hamt_impl *t;
+    struct hamt *t;
     t = hamt_create(my_keyhash_string, my_keycmp_string,
                     &hamt_allocator_default);
     enum { N = 6 };
@@ -630,7 +630,7 @@ MU_TEST_CASE(test_size)
 MU_TEST_CASE(test_iterators)
 {
     printf(". testing iterators\n");
-    struct hamt_impl *t;
+    struct hamt *t;
 
     struct {
         char *key;
@@ -649,7 +649,7 @@ MU_TEST_CASE(test_iterators)
 
     /* test create/delete */
 
-    hamt_iterator it = hamt_it_create(t);
+    struct hamt_iterator *it = hamt_it_create(t);
     hamt_it_next(it);
     MU_ASSERT(it->cur == NULL, "iteration fail for empty trie");
     hamt_it_delete(it);
@@ -677,15 +677,15 @@ MU_TEST_CASE(test_iterators)
 MU_TEST_CASE(test_iterators_1m)
 {
     /* Creates a HAMT with 1M items; walks the HAMT
-     * using an iterator and compares the iterator 
+     * using an iterator and compares the iterator
      * count with the HAMT tree size. */
     printf(". testing iterators with 1M items\n");
     size_t n_items = 1e6;
     char **words = NULL;
     /* get the data */
     words_load_numbers(&words, 0, n_items);
-    /* create and load the HAMT */
-    struct hamt_impl *t;
+    /* create and load the struct hamt **/
+    struct hamt *t;
     t = hamt_create(my_keyhash_string, my_keycmp_string,
                     &hamt_allocator_default);
     for (size_t i = 0; i < n_items; i++) {
@@ -694,7 +694,7 @@ MU_TEST_CASE(test_iterators_1m)
     /* create an iterator, walk the entire trie and
      * count how often we can increment the iterator before
      * exhausting it */
-    hamt_iterator it = hamt_it_create(t);
+    struct hamt_iterator *it = hamt_it_create(t);
     size_t count = 0;
     while (hamt_it_valid(it)) {
         count += 1;
@@ -720,9 +720,9 @@ MU_TEST_CASE(test_persistent_set)
     } data[6] = {{"humpty", 1}, {"dumpty", 2}, {"sat", 3},
                  {"on", 4},     {"the", 5},    {"wall", 6}};
 
-    struct hamt_impl *t = hamt_create(my_keyhash_string, my_keycmp_string,
+    struct hamt *t = hamt_create(my_keyhash_string, my_keycmp_string,
                                       &hamt_allocator_default);
-    struct hamt_impl *tmp = t;
+    struct hamt *tmp = t;
     for (size_t i = 0; i < 6; ++i) {
         tmp = hamt_pset(t, data[i].key, &data[i].value);
         MU_ASSERT(hamt_size(tmp) == hamt_size(t) + 1, "wrong trie size");
@@ -753,7 +753,7 @@ MU_TEST_CASE(test_persistent_aspell_dict_en)
     printf(". testing large-scale set/insert w/ structural sharing\n");
 
     char **words = NULL;
-    HAMT t;
+    struct hamt *t;
 
     words_load(&words, WORDS_MAX);
     t = hamt_create(my_keyhash_string, my_keycmp_string,
@@ -795,7 +795,7 @@ MU_TEST_CASE(test_persistent_remove_aspell_dict_en)
     printf(". testing large-scale remove w/ structural sharing\n");
 
     char **words = NULL;
-    HAMT t;
+    struct hamt *t;
 
     words_load(&words, WORDS_MAX);
     t = hamt_create(my_keyhash_string, my_keycmp_string,
@@ -810,7 +810,7 @@ MU_TEST_CASE(test_persistent_remove_aspell_dict_en)
      * deleted value is not present in the new trie and can still be accessed
      * in the previous tree.
      */
-    HAMT s;
+    struct hamt *s;
     // char **jumbled = c
     for (size_t i = 0; i < WORDS_MAX; i++) {
         /* structural sharing */
@@ -837,7 +837,7 @@ MU_TEST_CASE(test_tree_depth)
 
     size_t n_items = 1e6;
     char **words = NULL;
-    HAMT t;
+    struct hamt *t;
 
     words_load_numbers(&words, 0, n_items);
 
