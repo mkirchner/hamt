@@ -225,8 +225,7 @@ struct hamt *hamt_dup(const struct hamt *h)
 {
     struct hamt *trie = mem_alloc(h->ator, sizeof(struct hamt));
     trie->ator = h->ator;
-    trie->root = mem_alloc(h->ator, sizeof(hamt_node));
-    memcpy(trie->root, h->root, sizeof(hamt_node));
+    trie->root = h->root;  /* shallow duplication! */
     trie->size = h->size;
     trie->key_hash = h->key_hash;
     trie->key_cmp = h->key_cmp;
@@ -409,7 +408,7 @@ const void *hamt_set(struct hamt *trie, void *key, void *value)
     return VALUE(n);
 }
 
-static path_result search(struct hamt *h, hamt_node *anchor, hash_state *hash,
+static path_result search(const struct hamt *h, hamt_node *anchor, hash_state *hash,
                           hamt_cmp_fn cmp_eq, const void *key)
 {
     path_result pr;
@@ -425,20 +424,20 @@ const struct hamt *hamt_pset(const struct hamt *h, void *key, void *value)
                                      .hash = h->key_hash(key, 0),
                                      .depth = 0,
                                      .shift = 0};
-    struct hamt *cp = hamt_dup(h);
     path_result pr = search(h, h->root, hash, h->key_cmp, key);
-    cp->root = pr.root; // FIXME: mem leak?
+    struct hamt *cp = hamt_dup(h);
+    cp->root = pr.root;
     switch (pr.sr.status) {
     case SEARCH_SUCCESS:
         pr.sr.VALUE(value) = tagged(value);
         break;
     case SEARCH_FAIL_NOTFOUND:
-        if (insert_kv(h, pr.sr.anchor, pr.sr.hash, key, value) != NULL) {
+        if (insert_kv(cp, pr.sr.anchor, pr.sr.hash, key, value) != NULL) {
             cp->size += 1;
         }
         break;
     case SEARCH_FAIL_KEYMISMATCH:
-        if (insert_table(h, pr.sr.value, pr.sr.hash, key, value) != NULL) {
+        if (insert_table(cp, pr.sr.value, pr.sr.hash, key, value) != NULL) {
             cp->size += 1;
         }
         break;
@@ -558,7 +557,7 @@ const struct hamt *hamt_premove(const struct hamt *trie, void *key)
                                      .shift = 0};
     struct hamt *cp = hamt_dup(trie);
     path_result pr =
-        rem(trie, trie->root, trie->root, hash, trie->key_cmp, key);
+        rem(cp, cp->root, cp->root, hash, cp->key_cmp, key);
     cp->root = pr.root;
     if (pr.rr.status == REMOVE_SUCCESS || pr.rr.status == REMOVE_GATHERED) {
         cp->size -= 1;
