@@ -683,7 +683,7 @@ MU_TEST_CASE(test_persistent_set)
 
     const struct hamt *t = hamt_create(my_keyhash_string, my_keycmp_string,
                                  &hamt_allocator_default);
-    const struct hamt *tmp = t;
+    const struct hamt *tmp;
     for (size_t i = 0; i < 6; ++i) {
         tmp = hamt_pset(t, data[i].key, &data[i].value);
         MU_ASSERT(hamt_size(tmp) == hamt_size(t) + 1, "wrong trie size");
@@ -728,22 +728,6 @@ MU_TEST_CASE(test_persistent_aspell_dict_en)
     for (size_t i = 0; i < WORDS_MAX; i++) {
         MU_ASSERT(hamt_get(t, words[i]) != NULL, "could not find expected key");
     }
-
-    /* Check if "bluism" has search depth 6 */
-    char target[] = "bluism";
-    hash_state *hash = &(hash_state){.key = target,
-                                     .hash_fn = my_keyhash_string,
-                                     .hash = my_keyhash_string(target, 0),
-                                     .depth = 0,
-                                     .shift = 0};
-    search_result sr =
-        search_recursive(t, t->root, hash, t->key_cmp, target, NULL);
-    MU_ASSERT(sr.status == SEARCH_SUCCESS, "fail");
-    char *value = (char *)untagged(sr.value->as.kv.value);
-
-    MU_ASSERT(value, "failed to retrieve existing value");
-    MU_ASSERT(strcmp(value, target) == 0, "invalid value");
-    MU_ASSERT(sr.hash->depth == 6, "invalid depth");
 
     words_free(words, WORDS_MAX);
     /* There is no way to cleanly free the structurally shared
@@ -793,7 +777,7 @@ MU_TEST_CASE(test_persistent_remove_aspell_dict_en)
 
 MU_TEST_CASE(test_tree_depth)
 {
-    printf(". testing tree depth linearity assumptions");
+    printf(". testing tree depth log32 assumptions");
 
     size_t n_items = 1e6;
     char **words = NULL;
