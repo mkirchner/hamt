@@ -225,7 +225,7 @@ struct hamt *hamt_dup(const struct hamt *h)
 {
     struct hamt *trie = mem_alloc(h->ator, sizeof(struct hamt));
     trie->ator = h->ator;
-    trie->root = h->root;  /* shallow duplication! */
+    trie->root = h->root; /* shallow duplication! */
     trie->size = h->size;
     trie->key_hash = h->key_hash;
     trie->key_cmp = h->key_cmp;
@@ -408,8 +408,8 @@ const void *hamt_set(struct hamt *trie, void *key, void *value)
     return VALUE(n);
 }
 
-static path_result search(const struct hamt *h, hamt_node *anchor, hash_state *hash,
-                          hamt_cmp_fn cmp_eq, const void *key)
+static path_result search(const struct hamt *h, hamt_node *anchor,
+                          hash_state *hash, hamt_cmp_fn cmp_eq, const void *key)
 {
     path_result pr;
     pr.root = mem_alloc(h->ator, sizeof(hamt_node));
@@ -556,8 +556,7 @@ const struct hamt *hamt_premove(const struct hamt *trie, void *key)
                                      .depth = 0,
                                      .shift = 0};
     struct hamt *cp = hamt_dup(trie);
-    path_result pr =
-        rem(cp, cp->root, cp->root, hash, cp->key_cmp, key);
+    path_result pr = rem(cp, cp->root, cp->root, hash, cp->key_cmp, key);
     cp->root = pr.root;
     if (pr.rr.status == REMOVE_SUCCESS || pr.rr.status == REMOVE_GATHERED) {
         cp->size -= 1;

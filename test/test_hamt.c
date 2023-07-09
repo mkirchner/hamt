@@ -682,7 +682,7 @@ MU_TEST_CASE(test_persistent_set)
                  {"on", 4},     {"the", 5},    {"wall", 6}};
 
     const struct hamt *t = hamt_create(my_keyhash_string, my_keycmp_string,
-                                 &hamt_allocator_default);
+                                       &hamt_allocator_default);
     const struct hamt *tmp;
     for (size_t i = 0; i < 6; ++i) {
         tmp = hamt_pset(t, data[i].key, &data[i].value);
