@@ -19,7 +19,7 @@ struct hamt_allocator {
 extern struct hamt_allocator hamt_allocator_default;
 
 struct hamt *hamt_create(hamt_key_hash_fn key_hash, hamt_cmp_fn key_cmp,
-                 struct hamt_allocator *ator);
+                         struct hamt_allocator *ator);
 void hamt_delete(struct hamt *trie);
 
 const void *hamt_get(const struct hamt *trie, void *key);
@@ -31,11 +31,11 @@ size_t hamt_size(const struct hamt *trie);
 
 struct hamt_iterator;
 
-struct hamt_iterator * hamt_it_create(const struct hamt *trie);
-void hamt_it_delete(struct hamt_iterator * it);
-bool hamt_it_valid(struct hamt_iterator * it);
-struct hamt_iterator * hamt_it_next(struct hamt_iterator * it);
-const void *hamt_it_get_key(struct hamt_iterator * it);
-const void *hamt_it_get_value(struct hamt_iterator * it);
+struct hamt_iterator *hamt_it_create(struct hamt *trie);
+void hamt_it_delete(struct hamt_iterator *it);
+bool hamt_it_valid(struct hamt_iterator *it);
+struct hamt_iterator *hamt_it_next(struct hamt_iterator *it);
+const void *hamt_it_get_key(struct hamt_iterator *it);
+const void *hamt_it_get_value(struct hamt_iterator *it);
 
 #endif /* HAMT_H */

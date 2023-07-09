@@ -4,7 +4,6 @@
 
 #include "../src/murmur3.c"
 
-
 MU_TEST_CASE(test_murmur3_x86_32)
 {
     printf(". testing Murmur3 (x86, 32bit)\n");

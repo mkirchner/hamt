@@ -681,9 +681,9 @@ MU_TEST_CASE(test_persistent_set)
     } data[6] = {{"humpty", 1}, {"dumpty", 2}, {"sat", 3},
                  {"on", 4},     {"the", 5},    {"wall", 6}};
 
-    struct hamt *t = hamt_create(my_keyhash_string, my_keycmp_string,
+    const struct hamt *t = hamt_create(my_keyhash_string, my_keycmp_string,
                                  &hamt_allocator_default);
-    struct hamt *tmp = t;
+    const struct hamt *tmp = t;
     for (size_t i = 0; i < 6; ++i) {
         tmp = hamt_pset(t, data[i].key, &data[i].value);
         MU_ASSERT(hamt_size(tmp) == hamt_size(t) + 1, "wrong trie size");
@@ -714,7 +714,7 @@ MU_TEST_CASE(test_persistent_aspell_dict_en)
     printf(". testing large-scale set/insert w/ structural sharing\n");
 
     char **words = NULL;
-    struct hamt *t;
+    const struct hamt *t;
 
     words_load(&words, WORDS_MAX);
     t = hamt_create(my_keyhash_string, my_keycmp_string,
@@ -756,7 +756,7 @@ MU_TEST_CASE(test_persistent_remove_aspell_dict_en)
     printf(". testing large-scale remove w/ structural sharing\n");
 
     char **words = NULL;
-    struct hamt *t;
+    const struct hamt *t;
 
     words_load(&words, WORDS_MAX);
     t = hamt_create(my_keyhash_string, my_keycmp_string,
@@ -771,8 +771,7 @@ MU_TEST_CASE(test_persistent_remove_aspell_dict_en)
      * deleted value is not present in the new trie and can still be accessed
      * in the previous tree.
      */
-    struct hamt *s;
-    // char **jumbled = c
+    const struct hamt *s;
     for (size_t i = 0; i < WORDS_MAX; i++) {
         /* structural sharing */
         s = hamt_premove(t, words[i]);
