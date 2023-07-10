@@ -528,17 +528,17 @@ Note that enabling persistence *requires* the use of a garbage collection
 strategy. Under stanard `malloc()` memory management, there is no way for
 the HAMT nodes to know how many descendants of a HAMT refer to them.
 
-### Implementation strategy
+### Documentation structure and implementation strategy
 
 In the following we will address these concepts in turn: we first define the
 foundational data structure used to build a tree and introduce the concept of
 an *anchor*. We then dive into hash functions and the *hash state management*
 required to make hashing work for trees of arbitrary depths and in the
-presence of hash collisions. Lastly, we turn to *table management*,
+presence of hash collisions. We then turn to *table management*,
 introducing a set of functions used to create, modify, query and dispose of
 mapped arrays.  With these pieces in place, we are ready to implement the
 insert/update, query, and delete functions for non-persistent HAMTs. And
-lastly, we will then introduce the concept of path copying and close with the
+lastly, we introduce the concept of path copying and close with the
 implementation of persistent insert/update and delete functions for HAMTs.
 
 
