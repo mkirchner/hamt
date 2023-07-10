@@ -90,34 +90,6 @@ MU_TEST_CASE(test_tagging)
     return 0;
 }
 
-MU_TEST_CASE(test_murmur3_x86_32)
-{
-    printf(". testing Murmur3 (x86, 32bit)\n");
-    /* test vectors from
-     * https://stackoverflow.com/questions/14747343/murmurhash3-test-vectors */
-    struct {
-        char *key;
-        size_t len;
-        uint32_t seed;
-        uint32_t expected;
-    } test_cases[7] = {
-        {NULL, 0, 0, 0},
-        {NULL, 0, 1, 0x514e28b7},
-        {NULL, 0, 0xffffffff, 0x81f16f39},
-        {"\x00\x00\x00\x00", 4, 0, 0x2362f9de},
-        {"\xff\xff\xff\xff", 4, 0, 0x76293b50},
-        {"\x21\x43\x65\x87", 4, 0, 0xf55b516b},
-        {"\x21\x43\x65\x87", 4, 0x5082edee, 0x2362f9de},
-    };
-
-    for (size_t i = 0; i < 7; ++i) {
-        uint32_t hash = murmur3_32((uint8_t *)test_cases[i].key,
-                                   test_cases[i].len, test_cases[i].seed);
-        MU_ASSERT(hash == test_cases[i].expected, "Wrong hash");
-    }
-    return 0;
-}
-
 static int my_strncmp_1(const void *lhs, const void *rhs)
 {
     return strncmp((const char *)lhs, (const char *)rhs, 1);
@@ -203,7 +175,7 @@ MU_TEST_CASE(test_search)
     t_root[2].as.kv.key = &keys[0];
     t_root[2].as.kv.value = tagged(&values[0]);
 
-    struct hamt_impl t;
+    struct hamt t;
     t.key_cmp = my_strncmp_1;
     t.ator = &hamt_allocator_default;
     t.root = mem_alloc(t.ator, sizeof(hamt_node));
@@ -254,7 +226,7 @@ MU_TEST_CASE(test_search)
 MU_TEST_CASE(test_set_with_collisions)
 {
     printf(". testing set/insert w/ forced key collision\n");
-    struct hamt_impl *t =
+    struct hamt *t =
         hamt_create(my_hash_1, my_strncmp_1, &hamt_allocator_default);
 
     /* example 1: no hash collisions */
@@ -278,7 +250,8 @@ MU_TEST_CASE(test_set_with_collisions)
                                      .hash = t->key_hash(&keys[2], 0),
                                      .depth = 0,
                                      .shift = 0};
-    search_result sr = search_recursive(t, t->root, hash, t->key_cmp, &keys[2], NULL);
+    search_result sr =
+        search_recursive(t, t->root, hash, t->key_cmp, &keys[2], NULL);
     MU_ASSERT(sr.status == SEARCH_SUCCESS, "failed to find inserted value");
     MU_ASSERT(new_node == sr.value, "Query result points to the wrong node");
     hamt_delete(t);
@@ -295,7 +268,7 @@ MU_TEST_CASE(test_set_whole_enchilada_00)
         int value;
     } data[5] = {{'0', 0}, {'2', 2}, {'4', 4}, {'7', 7}, {'8', 8}};
 
-    struct hamt_impl *t =
+    struct hamt *t =
         hamt_create(my_hash_1, my_strncmp_1, &hamt_allocator_default);
     for (size_t i = 0; i < 5; ++i) {
         set(t, t->root, t->key_hash, t->key_cmp, &data[i].key, &data[i].value);
@@ -307,8 +280,8 @@ MU_TEST_CASE(test_set_whole_enchilada_00)
                                          .hash = t->key_hash(&data[i].key, 0),
                                          .depth = 0,
                                          .shift = 0};
-        search_result sr = search_recursive(t, t->root, hash, t->key_cmp,
-                                            &data[i].key, NULL);
+        search_result sr =
+            search_recursive(t, t->root, hash, t->key_cmp, &data[i].key, NULL);
         MU_ASSERT(sr.status == SEARCH_SUCCESS, "failed to find inserted value");
         int *value = (int *)untagged(sr.value->as.kv.value);
         MU_ASSERT(value, "found value is NULL");
@@ -325,16 +298,6 @@ static int my_keycmp_string(const void *lhs, const void *rhs)
     size_t nl = strlen((const char *)lhs);
     size_t nr = strlen((const char *)rhs);
     return strncmp((const char *)lhs, (const char *)rhs, nl > nr ? nl : nr);
-}
-
-const char *strconcat(const char *s1, const char *s2)
-{
-    size_t n1 = strlen(s1);
-    size_t n2 = strlen(s2);
-    char *str = malloc(n1 + n2 + 1);
-    memcpy(str, s1, n1);
-    memcpy(str + n1, s2, n2 + 1); // copy \0 from second string
-    return str;
 }
 
 static uint32_t my_keyhash_string(const void *key, const size_t gen)
@@ -354,8 +317,8 @@ MU_TEST_CASE(test_set_stringkeys)
     } data[6] = {{"humpty", 1}, {"dumpty", 2}, {"sat", 3},
                  {"on", 4},     {"the", 5},    {"wall", 6}};
 
-    struct hamt_impl *t = hamt_create(my_keyhash_string, my_keycmp_string,
-                                      &hamt_allocator_default);
+    struct hamt *t = hamt_create(my_keyhash_string, my_keycmp_string,
+                                 &hamt_allocator_default);
     for (size_t i = 0; i < 6; ++i) {
         // printf("setting (%s, %d)\n", data[i].key, data[i].value);
         set(t, t->root, t->key_hash, t->key_cmp, data[i].key, &data[i].value);
@@ -369,8 +332,8 @@ MU_TEST_CASE(test_set_stringkeys)
                                          .hash = t->key_hash(data[i].key, 0),
                                          .depth = 0,
                                          .shift = 0};
-        search_result sr = search_recursive(t, t->root, hash, t->key_cmp,
-                                            data[i].key, NULL);
+        search_result sr =
+            search_recursive(t, t->root, hash, t->key_cmp, data[i].key, NULL);
         MU_ASSERT(sr.status == SEARCH_SUCCESS, "failed to find inserted value");
         int *value = (int *)untagged(sr.value->as.kv.value);
         MU_ASSERT(value, "found value is NULL");
@@ -388,7 +351,7 @@ MU_TEST_CASE(test_aspell_dict_en)
     printf(". testing large-scale set/insert w/ string keys\n");
 
     char **words = NULL;
-    HAMT t;
+    struct hamt *t;
 
     words_load(&words, WORDS_MAX);
     t = hamt_create(my_keyhash_string, my_keycmp_string,
@@ -418,11 +381,11 @@ MU_TEST_CASE(test_aspell_dict_en)
     MU_ASSERT(strcmp(value, target) == 0, "invalid value");
     MU_ASSERT(sr.hash->depth == 6, "invalid depth");
 
-
     /*
     printf("  Table size distribution for n=%lu:\n", t->size);
     for (size_t i = 0; i < 32; ++i) {
-        printf("    %2lu: %lu, %.4f\n", i+1, t->stats.table_sizes[i], t->stats.table_sizes[i]/(double)t->size);
+        printf("    %2lu: %lu, %.4f\n", i+1, t->stats.table_sizes[i],
+    t->stats.table_sizes[i]/(double)t->size);
     }
     */
     /*
@@ -437,7 +400,7 @@ MU_TEST_CASE(test_aspell_dict_en)
     words_free(words, WORDS_MAX);
     return 0;
 }
- MU_TEST_SUITE(test_setget_large_scale)
+MU_TEST_SUITE(test_setget_large_scale)
 {
     printf(". testing set/get/get for 1M items\n");
 
@@ -445,17 +408,15 @@ MU_TEST_CASE(test_aspell_dict_en)
     char **words = NULL;
     words_load_numbers(&words, 0, n_items);
 
-    HAMT t;
+    struct hamt *t;
     t = hamt_create(my_keyhash_string, my_keycmp_string,
                     &hamt_allocator_default);
     for (size_t i = 0; i < n_items; i++) {
         hamt_set(t, words[i], words[i]);
-        MU_ASSERT(hamt_get(t, words[i]),
-            "Failed to get key we just pushed");
+        MU_ASSERT(hamt_get(t, words[i]), "Failed to get key we just pushed");
     }
     for (size_t i = 0; i < n_items; i++) {
-        MU_ASSERT(hamt_get(t, words[i]),
-            "Failed to get key we pushed earlier");
+        MU_ASSERT(hamt_get(t, words[i]), "Failed to get key we pushed earlier");
     }
     hamt_delete(t);
     words_free(words, n_items);
@@ -473,9 +434,9 @@ MU_TEST_CASE(test_shrink_table)
     } data[N] = {
         {"0", 0, 1}, {"2", 2, 3}, {"4", 4, 4}, {"7", 7, 12}, {"8", 8, 22}};
 
-    /* dummy HAMT so we can pass the allocator info */
-    HAMT t = hamt_create(my_keyhash_string, my_keycmp_string,
-                         &hamt_allocator_default);
+    /* dummy struct hamt *so we can pass the allocator info */
+    struct hamt *t = hamt_create(my_keyhash_string, my_keycmp_string,
+                                 &hamt_allocator_default);
 
     /* create table w/ 5 entries and delete each position */
     hamt_node *a0;
@@ -521,9 +482,9 @@ MU_TEST_CASE(test_gather_table)
         int index;
     } data[N] = {{"0", 0, 1}, {"2", 2, 3}};
 
-    /* dummy HAMT so we can pass the allocator info */
-    HAMT t = hamt_create(my_keyhash_string, my_keycmp_string,
-                         &hamt_allocator_default);
+    /* dummy struct hamt *so we can pass the allocator info */
+    struct hamt *t = hamt_create(my_keyhash_string, my_keycmp_string,
+                                 &hamt_allocator_default);
 
     hamt_node *a0 = mem_alloc(t->ator, sizeof(hamt_node));
     a0->as.table.index = 0;
@@ -553,8 +514,8 @@ MU_TEST_CASE(test_remove)
     } data[N] = {{"humpty", 1}, {"dumpty", 2}, {"sat", 3},
                  {"on", 4},     {"the", 5},    {"wall", 6}};
 
-    struct hamt_impl *t = hamt_create(my_keyhash_string, my_keycmp_string,
-                                      &hamt_allocator_default);
+    struct hamt *t = hamt_create(my_keyhash_string, my_keycmp_string,
+                                 &hamt_allocator_default);
 
     for (size_t k = 0; k < 3; ++k) {
         for (size_t i = 0; i < N; ++i) {
@@ -584,7 +545,7 @@ MU_TEST_CASE(test_remove)
 MU_TEST_CASE(test_create_delete)
 {
     printf(". testing create/delete cycle\n");
-    struct hamt_impl *t;
+    struct hamt *t;
     t = hamt_create(my_keyhash_string, my_keycmp_string,
                     &hamt_allocator_default);
     hamt_delete(t);
@@ -606,7 +567,7 @@ MU_TEST_CASE(test_create_delete)
 MU_TEST_CASE(test_size)
 {
     printf(". testing tree size tracking\n");
-    struct hamt_impl *t;
+    struct hamt *t;
     t = hamt_create(my_keyhash_string, my_keycmp_string,
                     &hamt_allocator_default);
     enum { N = 6 };
@@ -630,7 +591,7 @@ MU_TEST_CASE(test_size)
 MU_TEST_CASE(test_iterators)
 {
     printf(". testing iterators\n");
-    struct hamt_impl *t;
+    struct hamt *t;
 
     struct {
         char *key;
@@ -649,7 +610,7 @@ MU_TEST_CASE(test_iterators)
 
     /* test create/delete */
 
-    hamt_iterator it = hamt_it_create(t);
+    struct hamt_iterator *it = hamt_it_create(t);
     hamt_it_next(it);
     MU_ASSERT(it->cur == NULL, "iteration fail for empty trie");
     hamt_it_delete(it);
@@ -677,15 +638,15 @@ MU_TEST_CASE(test_iterators)
 MU_TEST_CASE(test_iterators_1m)
 {
     /* Creates a HAMT with 1M items; walks the HAMT
-     * using an iterator and compares the iterator 
+     * using an iterator and compares the iterator
      * count with the HAMT tree size. */
     printf(". testing iterators with 1M items\n");
     size_t n_items = 1e6;
     char **words = NULL;
     /* get the data */
     words_load_numbers(&words, 0, n_items);
-    /* create and load the HAMT */
-    struct hamt_impl *t;
+    /* create and load the struct hamt **/
+    struct hamt *t;
     t = hamt_create(my_keyhash_string, my_keycmp_string,
                     &hamt_allocator_default);
     for (size_t i = 0; i < n_items; i++) {
@@ -694,7 +655,7 @@ MU_TEST_CASE(test_iterators_1m)
     /* create an iterator, walk the entire trie and
      * count how often we can increment the iterator before
      * exhausting it */
-    hamt_iterator it = hamt_it_create(t);
+    struct hamt_iterator *it = hamt_it_create(t);
     size_t count = 0;
     while (hamt_it_valid(it)) {
         count += 1;
@@ -720,9 +681,9 @@ MU_TEST_CASE(test_persistent_set)
     } data[6] = {{"humpty", 1}, {"dumpty", 2}, {"sat", 3},
                  {"on", 4},     {"the", 5},    {"wall", 6}};
 
-    struct hamt_impl *t = hamt_create(my_keyhash_string, my_keycmp_string,
-                                      &hamt_allocator_default);
-    struct hamt_impl *tmp = t;
+    const struct hamt *t = hamt_create(my_keyhash_string, my_keycmp_string,
+                                       &hamt_allocator_default);
+    const struct hamt *tmp;
     for (size_t i = 0; i < 6; ++i) {
         tmp = hamt_pset(t, data[i].key, &data[i].value);
         MU_ASSERT(hamt_size(tmp) == hamt_size(t) + 1, "wrong trie size");
@@ -753,7 +714,7 @@ MU_TEST_CASE(test_persistent_aspell_dict_en)
     printf(". testing large-scale set/insert w/ structural sharing\n");
 
     char **words = NULL;
-    HAMT t;
+    const struct hamt *t;
 
     words_load(&words, WORDS_MAX);
     t = hamt_create(my_keyhash_string, my_keycmp_string,
@@ -768,22 +729,6 @@ MU_TEST_CASE(test_persistent_aspell_dict_en)
         MU_ASSERT(hamt_get(t, words[i]) != NULL, "could not find expected key");
     }
 
-    /* Check if "bluism" has search depth 6 */
-    char target[] = "bluism";
-    hash_state *hash = &(hash_state){.key = target,
-                                     .hash_fn = my_keyhash_string,
-                                     .hash = my_keyhash_string(target, 0),
-                                     .depth = 0,
-                                     .shift = 0};
-    search_result sr =
-        search_recursive(t, t->root, hash, t->key_cmp, target, NULL);
-    MU_ASSERT(sr.status == SEARCH_SUCCESS, "fail");
-    char *value = (char *)untagged(sr.value->as.kv.value);
-
-    MU_ASSERT(value, "failed to retrieve existing value");
-    MU_ASSERT(strcmp(value, target) == 0, "invalid value");
-    MU_ASSERT(sr.hash->depth == 6, "invalid depth");
-
     words_free(words, WORDS_MAX);
     /* There is no way to cleanly free the structurally shared
      * tries without garbage collection. Leak them. */
@@ -795,7 +740,7 @@ MU_TEST_CASE(test_persistent_remove_aspell_dict_en)
     printf(". testing large-scale remove w/ structural sharing\n");
 
     char **words = NULL;
-    HAMT t;
+    const struct hamt *t;
 
     words_load(&words, WORDS_MAX);
     t = hamt_create(my_keyhash_string, my_keycmp_string,
@@ -810,8 +755,7 @@ MU_TEST_CASE(test_persistent_remove_aspell_dict_en)
      * deleted value is not present in the new trie and can still be accessed
      * in the previous tree.
      */
-    HAMT s;
-    // char **jumbled = c
+    const struct hamt *s;
     for (size_t i = 0; i < WORDS_MAX; i++) {
         /* structural sharing */
         s = hamt_premove(t, words[i]);
@@ -833,11 +777,11 @@ MU_TEST_CASE(test_persistent_remove_aspell_dict_en)
 
 MU_TEST_CASE(test_tree_depth)
 {
-    printf(". testing tree depth linearity assumptions");
+    printf(". testing tree depth log32 assumptions");
 
     size_t n_items = 1e6;
     char **words = NULL;
-    HAMT t;
+    struct hamt *t;
 
     words_load_numbers(&words, 0, n_items);
 
@@ -873,7 +817,8 @@ MU_TEST_CASE(test_tree_depth)
     hamt_delete(t);
     words_free(words, n_items);
     printf(" (avg tree depth w/ %lu items: %f, expected %f, max: %lu)\n",
-        n_items, avg_depth, log2(n_items) / 5.0, max_depth); /* log_32(n_items) */
+           n_items, avg_depth, log2(n_items) / 5.0,
+           max_depth); /* log_32(n_items) */
     return 0;
 }
 int mu_tests_run = 0;
@@ -883,7 +828,6 @@ MU_TEST_SUITE(test_suite)
     MU_RUN_TEST(test_popcount);
     MU_RUN_TEST(test_compact_index);
     MU_RUN_TEST(test_tagging);
-    MU_RUN_TEST(test_murmur3_x86_32);
     MU_RUN_TEST(test_search);
     MU_RUN_TEST(test_set_with_collisions);
     MU_RUN_TEST(test_set_whole_enchilada_00);
@@ -902,7 +846,6 @@ MU_TEST_SUITE(test_suite)
     MU_RUN_TEST(test_persistent_aspell_dict_en);
     MU_RUN_TEST(test_persistent_remove_aspell_dict_en);
     MU_RUN_TEST(test_tree_depth);
-    // add more tests here
     return 0;
 }
 

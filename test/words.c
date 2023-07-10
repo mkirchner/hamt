@@ -31,12 +31,11 @@ void words_load_numbers(char ***words, size_t start, size_t n_words)
     *words = calloc(n_words, sizeof(char *));
     char buf[32];
     for (size_t i = 0; i < n_words; ++i) {
-        n_written = snprintf(buf, 32, "%lu", start+i);
+        n_written = snprintf(buf, 32, "%lu", start + i);
         assert(n_written < 32 && "number too big for string buffer");
         (*words)[i] = strdup(buf);
     }
 }
-
 
 void words_free(char **words, size_t n)
 {

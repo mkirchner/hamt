@@ -1,26 +1,23 @@
 # libhamt
 
-*This is work in progress, in particular the docs.*
+*FIXME: Add removal and persistence docs.*
 
-A hash array-mapped trie (HAMT) implementation in C99. The implementation
-follows Bagwell's 2000 paper[[1]][bagwell_00_ideal], with a focus on clarity
-rather than raw speed.
-
-A HAMT is a data structure that can be used to efficiently implement
-[*persistent*][wiki_persistent_data_structure] associative arrays (aka maps)
-and sets, see the [Introduction](#introduction).
-
-The original motivation for this effort was the desire to understand and
-implement an efficient persistent data structure with structural sharing for
-maps and sets for [my own Lisp implementation][stutter].
+A hash array-mapped trie (HAMT) implementation in C99. A HAMT is a data
+structure that can be used to efficiently implement
+[*persistent*][wiki_persistent_data_structure] associative arrays (aka maps,
+dicts) and sets, see the [Introduction](#introduction). The implementation here
+loosely follows Bagwell's 2000 paper[[1]][bagwell_00_ideal], with a focus on
+code clarity.
 
 What prompted the somewhat detailed writeup was the realization that there is
 not a lot of in-depth documentation for HAMTs beyond the original Bagwell
-paper[[1][bagwell_00_ideal]] Some of the more helpful posts are [Karl Krukow's
+paper[[1][bagwell_00_ideal]]. Some of the more helpful posts are [Karl Krukow's
 intro to Clojure's `PersistentHashMap`][krukov_09_understanding], [C. S. Lim's
-C++ template implementation][chaelim_hamt], and [Adrian Coyler's morning paper
-post][coyler_15_champ] on compressed HAMTs. There is more, but it's all in bits
-and pieces. This is an attempt to (partially) improve that situation.
+C++ template implementation][chaelim_hamt], [Adrian Coyler's morning paper
+post][coyler_15_champ] and the original [Steindoerfer/Vinju compressed HAMT
+article it summarizes][steindoerfer_15_optimizing]. The rest mostly seems to be
+all bits and pieces and this document is an attempt to (partially) improve that
+situation.
 
 ## Quickstart
 
@@ -36,41 +33,11 @@ $ make test
 In order to use `libhamt` in your own projects, copy `include/hamt.h` and
 `src/hamt.c` in your own source tree and build from there.
 
-## Table of Contents
+### Benchmarks
 
-* [Introduction](#introduction)
-* [API](#api)
-   * [HAMT lifecycle](#hamt-lifecycle)
-      * [Memory management](#memory-management)
-   * [Query](#query)
-      * [Iterators](#iterators)
-   * [Modification: Insertion &amp; Removal](#modification-insertion--removal)
-   * [Using the HAMT as an efficient persistent data structure](#using-the-hamt-as-an-efficient-persistent-data-structure)
-   * [Examples](#examples)
-      * [Example 1: ephemeral HAMT w/ standard allocation](#example-1-ephemeral-hamt-w-standard-allocation)
-      * [Example 2: Changes required for garbage collection and persistence](#example-2-changes-required-for-garbage-collection-and-persistence)
-      * [Example 3: Using iterators](#example-3-using-iterators)
-* [Implementation](#implementation)
-   * [Setup](#setup)
-      * [Project structure](#project-structure)
-      * [Building the project](#building-the-project)
-   * [Design](#design)
-      * [Foundational data structures](#foundational-data-structures)
-   * [Hashing](#hashing)
-      * [Hash exhaustion: hash generations and state management](#hash-exhaustion-hash-generations-and-state-management)
-   * [Table management](#table-management)
-   * [Putting it all together](#putting-it-all-together)
-      * [Search](#search)
-      * [Insert](#insert)
-      * [Remove](#remove)
-      * [Iterators](#iterators-1)
-   * [Persistent data structures and structural sharing](#persistent-data-structures-and-structural-sharing)
-      * [Basic idea: path copying](#basic-idea-path-copying)
-      * [Insert](#insert-1)
-      * [Remove](#remove-1)
-* [Appendix](#appendix)
-   * [Unit testing](#unit-testing)
-* [Footnotes](#footnotes)
+For basic performance comparison with AVL and red-black trees (from `libavl`)
+and the HashTree from GLib, see [the benchmarking repo][hamt_bench_github].
+
 
 # Introduction
 
@@ -90,35 +57,34 @@ versions of maps and sets.
 
 The remaining documentation starts with a description of the `libhamt` API and
 two examples that demonstrate the use of a HAMT as an ephemeral and persistent
-data structure, respectively. I then detail the implementation: starting from
+data structure, respectively. It then details the implementation: starting from
 the foundational data structures and the helper code required for hash
 exhaustion and table management, we cover search, insertion, removal, and
 iterators. The final implementation section introduces path copying and explains
-the changes required to support persistent insert and remove operations. We
-close with an outlook and an appendix.
+the changes required to support persistent insert and remove operations. It
+closes with an outlook and an appendix.
 
 # API
 
 ## HAMT lifecycle
 
-The core data type exported in the `libhamt` interface is `HAMT`. In order to
-create a `HAMT` instance, one must call `hamt_create()`, which requires a
+The core data type exported in the `libhamt` interface is `struct hamt`. In order to
+create a `struct hamt` instance, one must call `hamt_create()`, which requires a
 hash function of type `hamt_key_hash_fn` to hash keys, a comparison function of
 type `hamt_cmp_fn` to compare keys, and a pointer to a `hamt_allocator` instance.
-`hamt_delete()` deletes `HAMT` instances that were created with `hamt_create()`.
+`hamt_delete()` deletes `struct hamt` instances that were created with `hamt_create()`.
 
 
 ```c
 /* The libhamt core data structure is a handle to a hash array-mapped trie */
-typedef struct hamt_impl *HAMT;
 
 /* Function signature definitions for key comparison and hashing */
 typedef int (*hamt_cmp_fn)(const void *lhs, const void *rhs);
 typedef uint32_t (*hamt_key_hash_fn)(const void *key, const size_t gen);
 
 /* API functions for lifecycle management */
-HAMT hamt_create(hamt_key_hash_fn key_hash, hamt_cmp_fn key_cmp, struct hamt_allocator *ator);
-void hamt_delete(HAMT);
+struct hamt *hamt_create(hamt_key_hash_fn key_hash, hamt_cmp_fn key_cmp, struct hamt_allocator *ator);
+void hamt_delete(struct hamt *);
 ```
 
 The `hamt_key_hash_fn` takes a `key` and a generation `gen`. The expectation is
@@ -157,8 +123,8 @@ example](#example-2-garbage-collected-persistent-hamts)).
 ## Query
 
 ```c
-size_t hamt_size(const HAMT trie);
-const void *hamt_get(const HAMT trie, void *key);
+size_t hamt_size(const struct hamt *trie);
+const void *hamt_get(const struct hamt *trie, void *key);
 ```
 
 The `hamt_size()` function returns the size of the HAMT in O(1). Querying the
@@ -170,8 +136,8 @@ not exist in the HAMT.
 
 The API also provides key/value pair access through the `hamt_iterator` struct.
 ```c
-size_t hamt_size(const HAMT trie);
-const void *hamt_get(const HAMT trie, void *key);
+size_t hamt_size(const struct hamt *trie);
+const void *hamt_get(const struct hamt *trie, void *key);
 ```
 
 Iterators are tied to a specific HAMT and are created using the
@@ -185,7 +151,7 @@ key/value pair. In order to delete an existing and/or exhausted iterator, call
 ```c
 typedef struct hamt_iterator_impl *hamt_iterator;
 
-hamt_iterator hamt_it_create(const HAMT trie);
+hamt_iterator hamt_it_create(const struct hamt *trie);
 void hamt_it_delete(hamt_iterator it);
 bool hamt_it_valid(hamt_iterator it);
 hamt_iterator hamt_it_next(hamt_iterator it);
@@ -212,8 +178,8 @@ of hash function and (where applicable) seed.
 ### Ephemeral modification
 
 ```c
-const void *hamt_set(HAMT trie, void *key, void *value);
-void *hamt_remove(HAMT trie, void *key);
+const void *hamt_set(struct hamt *trie, void *key, void *value);
+void *hamt_remove(struct hamt *trie, void *key);
 ```
 
 `hamt_set()` takes a pair of `key` and `value` pointers and adds the pair to the HAMT,
@@ -232,7 +198,7 @@ modificiation functions return a new HAMT. Modification of a persistent HAMT
 therefore requires a reassignment idiom if the goal is modification only:
 
 ```c
-HAMT h = hamt_create(...)
+const struct hamt *h = hamt_create(...)
 ...
 /* Set a value and drop the reference to the old HAMT; the GC
  * will take care of cleaning up remaining unreachable allocations.
@@ -246,8 +212,8 @@ sharing such that the overhead is limited to *~log<sub>32</sub>(N)* nodes (where
 number of nodes in the graph).
 
 ```c
-const HAMT hamt_pset(const HAMT trie, void *key, void *value);
-const HAMT hamt_premove(const HAMT trie, void *key);
+const struct hamt *hamt_pset(const struct hamt *trie, void *key, void *value);
+const struct hamt *hamt_premove(const struct hamt *trie, void *key);
 ```
 
 `hamt_pset()` inserts or updates the `key` with `value` and returns an opaque
@@ -292,7 +258,7 @@ int main(int argn, char *argv[])
         /* ... */
     };
 
-    HAMT t;
+    struct hamt *t;
 
     /* create table */
     t = hamt_create(hash_string, strcmp, &hamt_allocator_default);
@@ -342,7 +308,7 @@ int main(int argc, char *argv[]) {
     NULL to avoid explicit freeing of memory.
     */
     struct hamt_allocator gc_alloc = {GC_malloc, GC_realloc, nop};
-    t = hamt_create(hash_string, strcmp, &gc_alloc);
+    const struct hamt *t = hamt_create(hash_string, strcmp, &gc_alloc);
     ...
 }
 ```
@@ -363,7 +329,7 @@ iterator is valid. In every interation we print the current key/value pair to
 
 ```c
     ...
-    HAMT t = hamt_create(hash_string, strcmp, &hamt_allocator_default);
+    struct hamt *t = hamt_create(hash_string, strcmp, &hamt_allocator_default);
 
     /* load table */
     ...
@@ -421,15 +387,6 @@ To build the library and run the tests:
 ```
 $ make && make test
 ```
-
-And, optionally, to run the performance tests:
-
-```
-$ make perf
-```
-
-The latter requires a somewhat current Python 3 installation with
-`matplotlib` and `pandas` packages for graphing.
 
 ## Design
 
@@ -571,17 +528,17 @@ Note that enabling persistence *requires* the use of a garbage collection
 strategy. Under stanard `malloc()` memory management, there is no way for
 the HAMT nodes to know how many descendants of a HAMT refer to them.
 
-### Implementation strategy
+### Documentation structure and implementation strategy
 
 In the following we will address these concepts in turn: we first define the
 foundational data structure used to build a tree and introduce the concept of
 an *anchor*. We then dive into hash functions and the *hash state management*
 required to make hashing work for trees of arbitrary depths and in the
-presence of hash collisions. Lastly, we turn to *table management*,
+presence of hash collisions. We then turn to *table management*,
 introducing a set of functions used to create, modify, query and dispose of
 mapped arrays.  With these pieces in place, we are ready to implement the
 insert/update, query, and delete functions for non-persistent HAMTs. And
-lastly, we will then introduce the concept of path copying and close with the
+lastly, we introduce the concept of path copying and close with the
 implementation of persistent insert/update and delete functions for HAMTs.
 
 
@@ -834,8 +791,8 @@ and expects users to provide a suitable function pointer as part of the call to
 ```c
 /* ... see below for a practical definition of my_keyhash_string */
 
-    HAMT t = hamt_create(my_keyhash_string, my_keycmp_string,
-                         &hamt_allocator_default);
+    struct hamt *t = hamt_create(my_keyhash_string, my_keycmp_string,
+                                 &hamt_allocator_default);
 ```
 
 There are multiple [good, practical choices][why_simple_hash_functions_work]
@@ -883,8 +840,8 @@ static uint32_t my_keyhash_string(const void *key, const size_t gen)
 
 /* ... */
 
-    HAMT t = hamt_create(my_keyhash_string, my_keycmp_string,
-                         &hamt_allocator_default);
+    struct hamt *t = hamt_create(my_keyhash_string, my_keycmp_string,
+                                 &hamt_allocator_default);
 
 ```
 
@@ -932,7 +889,7 @@ static inline hash_state *hash_next(hash_state *h)
 {
     h->depth += 1;
     h->shift += 5;
-    if (h->shift > 30) {
+    if (h->shift > 25) {
         h->hash = h->hash_fn(h->key, h->depth / 5);
         h->shift = 0;
     }
@@ -1437,7 +1394,7 @@ and attempts to find (and return) a key/value pair specified by `key`. Its
 implementation uses `search_recursive()` from above:
 
 ```c
-const void *hamt_get(const HAMT trie, void *key)
+const void *hamt_get(const struct hamt *trie, void *key)
 {
     hash_state *hash = &(hash_state){.key = key,
                                      .hash_fn = trie->key_hash,
@@ -1472,7 +1429,7 @@ entries that may have had the same key but a different value.
 The internal function that implements this behavior is `set()`:
 
 ```c
-static const hamt_node *set(HAMT h, hamt_node *anchor, hamt_key_hash_fn hash_fn,
+static const hamt_node *set(struct hamt *h, hamt_node *anchor, hamt_key_hash_fn hash_fn,
                             hamt_cmp_fn cmp_fn, void *key, void *value)
 ```
 
@@ -1489,7 +1446,7 @@ pair can be placed correctly. Cases (2) and (3) are covered by the
 `insert_kv()` and `insert_table()` helper functions, respectively.
 
 ```c
-static const hamt_node *set(HAMT h, hamt_node *anchor, hamt_key_hash_fn hash_fn,
+static const hamt_node *set(struct hamt *h, hamt_node *anchor, hamt_key_hash_fn hash_fn,
                             hamt_cmp_fn cmp_fn, void *key, void *value)
 {
     hash_state *hash = &(hash_state){.key = key,
@@ -1625,7 +1582,7 @@ The implementation of the external API for inserting and updating values in
 the HAMT is straighforward:
 
 ```c
-const void *hamt_set(HAMT trie, void *key, void *value)
+const void *hamt_set(struct hamt *trie, void *key, void *value)
 {
     const hamt_node *n =
         set(trie, trie->root, trie->key_hash, trie->key_cmp, key, value);
@@ -1643,7 +1600,7 @@ a pointer to the value of the new key.
 
 ## Persistent data structures and structural sharing
 
-### Basic idea: path copying
+### Path copying
 
 ### Insert
 
@@ -1807,6 +1764,7 @@ summary or [here][c_templating] for a more in-depth treatise.
 [cpp_unordered_map_impl]: https://stackoverflow.com/a/31113618
 [driscoll_86_making]: https://www.cs.cmu.edu/~sleator/papers/another-persistence.pdf
 [glib_hashtable]: https://gitlab.gnome.org/GNOME/glib/-/blob/main/glib/ghash.c
+[hamt_bench_github]: https://github.com/mkirchner/hamt-bench
 [hickey_are_we_there_yet]: https://github.com/matthiasn/talk-transcripts/blob/master/Hickey_Rich/AreWeThereYet.md
 [hickey_value_of_values]: https://github.com/matthiasn/talk-transcripts/blob/master/Hickey_Rich/ValueOfValues.md
 [js_map]: https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Map
@@ -1819,6 +1777,7 @@ summary or [here][c_templating] for a more in-depth treatise.
 [python_dict_pre36]: https://stackoverflow.com/a/9022835
 [python_dictobj]: https://github.com/python/cpython/blob/main/Objects/dictobject.c
 [sedgewick_11_algorithms]: https://www.amazon.com/Algorithms-4th-Robert-Sedgewick/dp/032157351X
+[steindoerfer_15_optimizing]: https://michael.steindorfer.name/publications/oopsla15.pdf
 [stutter]: https://github.com/mkirchner/stutter
 [wiki_associative_array]: https://en.wikipedia.org/wiki/Associative_array
 [wiki_avl_trees]: https://en.wikipedia.org/wiki/AVL_tree
