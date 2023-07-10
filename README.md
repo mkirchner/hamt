@@ -1,10 +1,8 @@
 # libhamt
 
-*This is work in progress, in particular the docs.*
-
 A hash array-mapped trie (HAMT) implementation in C99. The implementation
-follows Bagwell's 2000 paper[[1]][bagwell_00_ideal], with a focus on clarity
-rather than raw speed.
+loosely follows Bagwell's 2000 paper[[1]][bagwell_00_ideal], with a focus 
+on code clarity.
 
 A HAMT is a data structure that can be used to efficiently implement
 [*persistent*][wiki_persistent_data_structure] associative arrays (aka maps)
@@ -35,6 +33,13 @@ $ make test
 
 In order to use `libhamt` in your own projects, copy `include/hamt.h` and
 `src/hamt.c` in your own source tree and build from there.
+
+### Benchmarks
+
+For basic performance comparison with AVL and red-black trees (from `libavl`)
+and the HashTree from GLib, see [the benchmarking repo][hamt_bench_github].
+
+
 
 ## Table of Contents
 
@@ -1807,6 +1812,7 @@ summary or [here][c_templating] for a more in-depth treatise.
 [cpp_unordered_map_impl]: https://stackoverflow.com/a/31113618
 [driscoll_86_making]: https://www.cs.cmu.edu/~sleator/papers/another-persistence.pdf
 [glib_hashtable]: https://gitlab.gnome.org/GNOME/glib/-/blob/main/glib/ghash.c
+[hamt_bench_github]: https://github.com/mkirchner/hamt-bench
 [hickey_are_we_there_yet]: https://github.com/matthiasn/talk-transcripts/blob/master/Hickey_Rich/AreWeThereYet.md
 [hickey_value_of_values]: https://github.com/matthiasn/talk-transcripts/blob/master/Hickey_Rich/ValueOfValues.md
 [js_map]: https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Map
