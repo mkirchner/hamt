@@ -1,7 +1,5 @@
 # libhamt
 
-*FIXME: Add removal and persistence docs.*
-
 A hash array-mapped trie (HAMT) implementation in C99. A HAMT is a data
 structure that can be used to efficiently implement
 [*persistent*][wiki_persistent_data_structure] associative arrays (aka maps,
@@ -18,6 +16,10 @@ post][coyler_15_champ] and the original [Steindoerfer/Vinju compressed HAMT
 article it summarizes][steindoerfer_15_optimizing]. The rest mostly seems to be
 all bits and pieces and this document is an attempt to (partially) improve that
 situation.
+
+### Todo
+
+- [ ] Complete docs (removal, persistence, path copying)
 
 ## Quickstart
 
