@@ -17,9 +17,7 @@ article it summarizes][steindoerfer_15_optimizing]. The rest mostly seems to be
 all bits and pieces and this document is an attempt to (partially) improve that
 situation.
 
-### Todo
-
-- [ ] Complete docs (removal, persistence, path copying)
+*FIXME: Complete docs (removal, persistence, path copying)*
 
 ## Quickstart
 
