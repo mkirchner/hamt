@@ -24,12 +24,25 @@ TEST_MURMUR_SRCS := test/test_murmur.c
 TEST_MURMUR_OBJS := $(TEST_MURMUR_SRCS:%=$(BUILD_DIR)/%.o)
 TEST_MURMUR_DEPS := $(TEST_MURMUR_OBJS:.o=.d)
 
-CPPFLAGS ?= $(INC_FLAGS) -MMD -MP -g -O0
+CPPFLAGS ?= $(INC_FLAGS) -MMD -MP -g -O3 -fPIC
 
-lib: $(BUILD_DIR)/src/libhamt.dylib
+TGT := $(shell uname)
+ifeq ($(TGT),Linux)
+lib: $(BUILD_DIR)/libhamt.so
+else
+ifeq ($(TGT),Darwin)
+lib: $(BUILD_DIR)/libhamt.dylib
+else
+lib: $(BUILD_DIR)/libhamt.dll
+endif
+endif
 
-$(BUILD_DIR)/src/libhamt.dylib: $(LIB_OBJS)
+$(BUILD_DIR)/libhamt.dylib: $(LIB_OBJS)
 	$(CC) $(LIB_OBJS) -dynamiclib -o $@
+$(BUILD_DIR)/libhamt.so: $(LIB_OBJS)
+	$(CC) $(LIB_OBJS) -shared -o $@
+$(BUILD_DIR)/libhamt.dll: $(LIB_OBJS)
+	$(CC) $(LIB_OBJS) -shared -o $@
 
 test: $(BUILD_DIR)/test/test_hamt $(BUILD_DIR)/test/test_murmur
 	$(BUILD_DIR)/test/test_murmur
