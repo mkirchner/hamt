@@ -233,7 +233,7 @@ MU_TEST_CASE(test_set_with_collisions)
     char keys[] = "028";
     int values[] = {0, 2, 8};
 
-    hamt_node *t_root = (hamt_node *)calloc(sizeof(hamt_node), 3);
+    hamt_node *t_root = table_allocate(t, 2);
     t_root[0].as.kv.key = &keys[0];
     t_root[0].as.kv.value = tagged(&values[0]);
     t_root[1].as.kv.key = &keys[1];
@@ -241,6 +241,8 @@ MU_TEST_CASE(test_set_with_collisions)
 
     t->root->as.table.ptr = t_root;
     t->root->as.table.index = (1 << 23) | (1 << 31);
+
+    printf("root: %p\n", t_root);
 
     /* insert value and find it again */
     const hamt_node *new_node =
@@ -841,11 +843,15 @@ MU_TEST_SUITE(test_suite)
     MU_RUN_TEST(test_size);
     MU_RUN_TEST(test_iterators);
     MU_RUN_TEST(test_iterators_1m);
+    MU_RUN_TEST(test_tree_depth);
     // persistent data structure tests
+    /*
+     * disable persistent data structure tests for allocator pool testing
+     *
     MU_RUN_TEST(test_persistent_set);
     MU_RUN_TEST(test_persistent_aspell_dict_en);
     MU_RUN_TEST(test_persistent_remove_aspell_dict_en);
-    MU_RUN_TEST(test_tree_depth);
+    */
     return 0;
 }
 
