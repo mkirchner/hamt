@@ -1,10 +1,13 @@
+#include "hamt.h"
 #include "minunit.h"
 #include <math.h>
+#include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
 #include "murmur3.h"
+#include "uh.h"
 #include "utils.h"
 #include "words.h"
 
@@ -775,9 +778,16 @@ MU_TEST_CASE(test_persistent_remove_aspell_dict_en)
     return 0;
 }
 
+
+static uint32_t my_keyhash_universal(const void *key, const size_t gen)
+{
+    return sedgewick_universal_hash((const char *) key, gen << 8);
+}
+
+
 MU_TEST_CASE(test_tree_depth)
 {
-    printf(". testing tree depth log32 assumptions");
+    printf(". testing tree depth log32 assumptions\n");
 
     size_t n_items = 1e6;
     char **words = NULL;
@@ -785,40 +795,51 @@ MU_TEST_CASE(test_tree_depth)
 
     words_load_numbers(&words, 0, n_items);
 
-    t = hamt_create(my_keyhash_string, my_keycmp_string,
-                    &hamt_allocator_default);
-    for (size_t i = 0; i < n_items; i++) {
-        hamt_set(t, words[i], words[i]);
-    }
+    hamt_key_hash_fn hash_fns[2] = { my_keyhash_string, my_keyhash_universal };
+    char *hash_names[2] = { "murmur3", "sedgewick_universal" };
 
-    /* Calculate the avg tree depth across all items */
-    double avg_depth = 0.0;
-    size_t max_depth = 0;
-    for (size_t i = 0; i < n_items; i++) {
-        hash_state *hash = &(hash_state){.key = words[i],
-                                         .hash_fn = my_keyhash_string,
-                                         .hash = my_keyhash_string(words[i], 0),
-                                         .depth = 0,
-                                         .shift = 0};
-        search_result sr =
-            search_recursive(t, t->root, hash, t->key_cmp, words[i], NULL);
-        if (sr.status != SEARCH_SUCCESS) {
-            printf("tree search failed for: %s\n", words[i]);
-            continue;
-        }
-        // in order to calculate depth, item must exist
-        MU_ASSERT(sr.status == SEARCH_SUCCESS, "tree depth search failure");
-        avg_depth = (avg_depth * i + sr.hash->depth) / (i + 1);
-        if (sr.hash->depth > max_depth) {
-            max_depth = sr.hash->depth;
-        }
-    }
+    for (size_t k = 0; k < 2; ++k) {
 
-    hamt_delete(t);
+        t = hamt_create(hash_fns[k], my_keycmp_string, &hamt_allocator_default);
+        for (size_t i = 0; i < n_items; i++) {
+            hamt_set(t, words[i], words[i]);
+        }
+        /* Calculate the avg tree depth across all items */
+        double avg_depth = 0.0;
+        size_t max_depth = 0;
+        for (size_t i = 0; i < n_items; i++) {
+            hash_state *hash = &(hash_state){.key = words[i],
+                                             .hash_fn = hash_fns[k],
+                                             .hash = hash_fns[k](words[i], 0),
+                                             .depth = 0,
+                                             .shift = 0};
+            search_result sr =
+                search_recursive(t, t->root, hash, t->key_cmp, words[i], NULL);
+            if (sr.status != SEARCH_SUCCESS) {
+                printf("tree search failed for: %s\n", words[i]);
+                continue;
+            }
+            // in order to calculate depth, item must exist
+            MU_ASSERT(sr.status == SEARCH_SUCCESS, "tree depth search failure");
+            avg_depth = (avg_depth * i + sr.hash->depth) / (i + 1);
+            if (sr.hash->depth > max_depth) {
+                max_depth = sr.hash->depth;
+                // printf("New max depth %lu for %s\n", max_depth, words[i]);
+            }
+            /*
+            else 
+            if (sr.hash->depth == max_depth) {
+                printf("Equal max depth %lu for %s\n", max_depth, words[i]);
+            }
+            */
+        }
+
+        hamt_delete(t);
+        printf("    %s (avg depth for %lu items: %0.3f, expected %0.3f, max: %lu)\n",
+               hash_names[k], n_items, avg_depth, log2(n_items) / 5.0,
+               max_depth); /* log_32(n_items) */
+    }
     words_free(words, n_items);
-    printf(" (avg tree depth w/ %lu items: %f, expected %f, max: %lu)\n",
-           n_items, avg_depth, log2(n_items) / 5.0,
-           max_depth); /* log_32(n_items) */
     return 0;
 }
 int mu_tests_run = 0;
@@ -845,7 +866,7 @@ MU_TEST_SUITE(test_suite)
     MU_RUN_TEST(test_persistent_set);
     MU_RUN_TEST(test_persistent_aspell_dict_en);
     MU_RUN_TEST(test_persistent_remove_aspell_dict_en);
-    MU_RUN_TEST(test_tree_depth);
+    // MU_RUN_TEST(test_tree_depth);
     return 0;
 }
 

@@ -8,10 +8,14 @@ on:
 
 jobs:
   build:
-
-    runs-on: macos-11
+    runs-on: macos-12
 
     steps:
     - uses: actions/checkout@v2
-    - name: make
+    - name: Build libraries
+      run: make
+    - name: Build tests
+      run: make build_test
+    - name: Run tests
       run: make test
+  

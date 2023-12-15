@@ -5,13 +5,15 @@ INC_FLAGS := $(addprefix -I,$(INC_DIRS))
 
 LIB_SRCS := \
 	src/hamt.c \
-	src/murmur3.c
+	src/murmur3.c \
+	src/uh.c
 
 LIB_OBJS := $(LIB_SRCS:%=$(BUILD_DIR)/%.o)
 LIB_DEPS := $(LIB_OBJS:.o=.d)
 
 TEST_HAMT_SRCS := \
 	src/murmur3.c \
+	src/uh.c \
 	test/test_hamt.c \
 	test/utils.c \
 	test/words.c
@@ -24,14 +26,16 @@ TEST_MURMUR_SRCS := test/test_murmur.c
 TEST_MURMUR_OBJS := $(TEST_MURMUR_SRCS:%=$(BUILD_DIR)/%.o)
 TEST_MURMUR_DEPS := $(TEST_MURMUR_OBJS:.o=.d)
 
-CPPFLAGS ?= $(INC_FLAGS) -MMD -MP -g -O0
+CPPFLAGS ?= $(INC_FLAGS) -MMD -MP -O3 # -g -O0
 
 lib: $(BUILD_DIR)/src/libhamt.dylib
 
 $(BUILD_DIR)/src/libhamt.dylib: $(LIB_OBJS)
 	$(CC) $(LIB_OBJS) -dynamiclib -o $@
 
-test: $(BUILD_DIR)/test/test_hamt $(BUILD_DIR)/test/test_murmur
+build_test: $(BUILD_DIR)/test/test_hamt $(BUILD_DIR)/test/test_murmur
+
+test: build_test
 	$(BUILD_DIR)/test/test_murmur
 	$(BUILD_DIR)/test/test_hamt
 
