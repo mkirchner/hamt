@@ -781,7 +781,7 @@ MU_TEST_CASE(test_persistent_remove_aspell_dict_en)
 
 static uint32_t my_keyhash_universal(const void *key, const size_t gen)
 {
-    return sedgewick_universal_hash((const char *) key, gen << 8);
+    return sedgewick_universal_hash((const char *) key, 0x8fffffff - (gen << 8));
 }
 
 
