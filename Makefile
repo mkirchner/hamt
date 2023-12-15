@@ -5,13 +5,15 @@ INC_FLAGS := $(addprefix -I,$(INC_DIRS))
 
 LIB_SRCS := \
 	src/hamt.c \
-	src/murmur3.c
+	src/murmur3.c \
+	src/uh.c
 
 LIB_OBJS := $(LIB_SRCS:%=$(BUILD_DIR)/%.o)
 LIB_DEPS := $(LIB_OBJS:.o=.d)
 
 TEST_HAMT_SRCS := \
 	src/murmur3.c \
+	src/uh.c \
 	test/test_hamt.c \
 	test/utils.c \
 	test/words.c
