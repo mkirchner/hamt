@@ -33,7 +33,9 @@ lib: $(BUILD_DIR)/src/libhamt.dylib
 $(BUILD_DIR)/src/libhamt.dylib: $(LIB_OBJS)
 	$(CC) $(LIB_OBJS) -dynamiclib -o $@
 
-test: $(BUILD_DIR)/test/test_hamt $(BUILD_DIR)/test/test_murmur
+build_test: $(BUILD_DIR)/test/test_hamt $(BUILD_DIR)/test/test_murmur
+
+test: build_test
 	$(BUILD_DIR)/test/test_murmur
 	$(BUILD_DIR)/test/test_hamt
 
