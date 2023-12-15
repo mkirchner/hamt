@@ -26,7 +26,7 @@ TEST_MURMUR_SRCS := test/test_murmur.c
 TEST_MURMUR_OBJS := $(TEST_MURMUR_SRCS:%=$(BUILD_DIR)/%.o)
 TEST_MURMUR_DEPS := $(TEST_MURMUR_OBJS:.o=.d)
 
-CPPFLAGS ?= $(INC_FLAGS) -MMD -MP -g -O0
+CPPFLAGS ?= $(INC_FLAGS) -MMD -MP -O3 # -g -O0
 
 lib: $(BUILD_DIR)/src/libhamt.dylib
 
