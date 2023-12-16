@@ -779,7 +779,7 @@ MU_TEST_CASE(test_persistent_remove_aspell_dict_en)
 
 MU_TEST_CASE(test_tree_depth)
 {
-    printf(". testing tree depth log32 assumptions");
+    printf(". testing tree depth log32 assumptions\n");
 
     size_t n_items = 1e6;
     char **words = NULL;
@@ -816,6 +816,24 @@ MU_TEST_CASE(test_tree_depth)
         }
     }
 
+    printf("Allocation stats\n");
+    size_t total_size = 0;
+    size_t total_allocated_items = 0;
+    for (size_t l = 0; l<32; ++l) {
+        total_size += t->table_ator[l].size;
+        total_allocated_items += t->table_ator[l].size * l;
+    }
+    for (size_t l = 0; l<32; ++l) {
+        printf("    %2lu: size=%8lu (%5.2f%%), n_allocs=%8lu, n_frees=%8lu, fill=%5.2f%%\n",
+                l,
+                t->table_ator[l].size,
+                100 * t->table_ator[l].size / (float) total_size,
+                t->table_ator[l].stats.alloc_count,
+                t->table_ator[l].stats.free_count,
+                100*(1.0 - (t->table_ator[l].stats.free_count / 
+                    (float) t->table_ator[l].stats.alloc_count)));
+    }
+    printf("Alloc overhead: %f\n", total_allocated_items / 1000000.0);
     hamt_delete(t);
     words_free(words, n_items);
     printf(" (avg tree depth w/ %lu items: %f, expected %f, max: %lu)\n",
