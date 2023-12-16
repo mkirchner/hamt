@@ -1,10 +1,13 @@
+#include "hamt.h"
 #include "minunit.h"
 #include <math.h>
+#include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
 #include "murmur3.h"
+#include "uh.h"
 #include "utils.h"
 #include "words.h"
 
@@ -777,68 +780,92 @@ MU_TEST_CASE(test_persistent_remove_aspell_dict_en)
     return 0;
 }
 
+static uint32_t my_keyhash_universal(const void *key, const size_t gen)
+{
+    return sedgewick_universal_hash((const char *)key, 0x8fffffff - (gen << 8));
+}
+
+static void print_allocation_stats(struct hamt *t)
+{
+    size_t total_size = 0;
+    size_t total_allocated_items = 0;
+    for (size_t l = 0; l < 32; ++l) {
+        total_size += t->table_ator[l].size;
+        total_allocated_items += t->table_ator[l].size * l;
+    }
+    printf("    Alloc overhead ratio: %f\n",
+           total_allocated_items / (float)t->size);
+    printf("    Pool allocator statistics:\n");
+    printf("       tsize    psize    psize%%   allocs    frees    fill%%  \n");
+    printf("      ------- --------- -------- -------- --------- -------\n");
+    for (size_t l = 0; l < 32; ++l) {
+        printf("      %6lu  %8lu  %5.2f%%  %7lu  %9lu  %4.2f%% \n", l + 1,
+               t->table_ator[l].size,
+               100 * t->table_ator[l].size / (float)total_size,
+               t->table_ator[l].stats.alloc_count,
+               t->table_ator[l].stats.free_count,
+               100 * (1.0 - (t->table_ator[l].stats.free_count /
+                             (float)t->table_ator[l].stats.alloc_count)));
+    }
+}
+
 MU_TEST_CASE(test_tree_depth)
 {
-    printf(". testing tree depth log32 assumptions\n");
+    printf(". creating tree statistics\n");
 
-    size_t n_items = 1e6;
+    size_t n_items = 1e7;
     char **words = NULL;
     struct hamt *t;
 
     words_load_numbers(&words, 0, n_items);
 
-    t = hamt_create(my_keyhash_string, my_keycmp_string,
-                    &hamt_allocator_default);
-    for (size_t i = 0; i < n_items; i++) {
-        hamt_set(t, words[i], words[i]);
-    }
+    hamt_key_hash_fn hash_fns[2] = {my_keyhash_string, my_keyhash_universal};
+    char *hash_names[2] = {"murmur3", "sedgewick_universal"};
 
-    /* Calculate the avg tree depth across all items */
-    double avg_depth = 0.0;
-    size_t max_depth = 0;
-    for (size_t i = 0; i < n_items; i++) {
-        hash_state *hash = &(hash_state){.key = words[i],
-                                         .hash_fn = my_keyhash_string,
-                                         .hash = my_keyhash_string(words[i], 0),
-                                         .depth = 0,
-                                         .shift = 0};
-        search_result sr =
-            search_recursive(t, t->root, hash, t->key_cmp, words[i], NULL);
-        if (sr.status != SEARCH_SUCCESS) {
-            printf("tree search failed for: %s\n", words[i]);
-            continue;
-        }
-        // in order to calculate depth, item must exist
-        MU_ASSERT(sr.status == SEARCH_SUCCESS, "tree depth search failure");
-        avg_depth = (avg_depth * i + sr.hash->depth) / (i + 1);
-        if (sr.hash->depth > max_depth) {
-            max_depth = sr.hash->depth;
-        }
-    }
+    for (size_t k = 0; k < 2; ++k) {
 
-    printf("Allocation stats\n");
-    size_t total_size = 0;
-    size_t total_allocated_items = 0;
-    for (size_t l = 0; l<32; ++l) {
-        total_size += t->table_ator[l].size;
-        total_allocated_items += t->table_ator[l].size * l;
+        t = hamt_create(hash_fns[k], my_keycmp_string, &hamt_allocator_default);
+        for (size_t i = 0; i < n_items; i++) {
+            hamt_set(t, words[i], words[i]);
+        }
+        printf("\n  [ %s ]\n", hash_names[k]);
+        print_allocation_stats(t);
+
+        /* Calculate the avg tree depth across all items */
+        double avg_depth = 0.0;
+        size_t max_depth = 0;
+        for (size_t i = 0; i < n_items; i++) {
+            hash_state *hash = &(hash_state){.key = words[i],
+                                             .hash_fn = hash_fns[k],
+                                             .hash = hash_fns[k](words[i], 0),
+                                             .depth = 0,
+                                             .shift = 0};
+            search_result sr =
+                search_recursive(t, t->root, hash, t->key_cmp, words[i], NULL);
+            if (sr.status != SEARCH_SUCCESS) {
+                printf("tree search failed for: %s\n", words[i]);
+                continue;
+            }
+            // in order to calculate depth, item must exist
+            MU_ASSERT(sr.status == SEARCH_SUCCESS, "tree depth search failure");
+            avg_depth = (avg_depth * i + sr.hash->depth) / (i + 1);
+            if (sr.hash->depth > max_depth) {
+                max_depth = sr.hash->depth;
+                // printf("New max depth %lu for %s\n", max_depth, words[i]);
+            }
+            /*
+            else
+            if (sr.hash->depth == max_depth) {
+                printf("Equal max depth %lu for %s\n", max_depth, words[i]);
+            }
+            */
+        }
+        printf("    Avg depth for %lu items: %0.3f, expected %0.3f, max: %lu\n",
+               n_items, avg_depth, log2(n_items) / 5.0,
+               max_depth); /* log_32(n_items) */
+        hamt_delete(t);
     }
-    for (size_t l = 0; l<32; ++l) {
-        printf("    %2lu: size=%8lu (%5.2f%%), n_allocs=%8lu, n_frees=%8lu, fill=%5.2f%%\n",
-                l,
-                t->table_ator[l].size,
-                100 * t->table_ator[l].size / (float) total_size,
-                t->table_ator[l].stats.alloc_count,
-                t->table_ator[l].stats.free_count,
-                100*(1.0 - (t->table_ator[l].stats.free_count / 
-                    (float) t->table_ator[l].stats.alloc_count)));
-    }
-    printf("Alloc overhead: %f\n", total_allocated_items / 1000000.0);
-    hamt_delete(t);
     words_free(words, n_items);
-    printf(" (avg tree depth w/ %lu items: %f, expected %f, max: %lu)\n",
-           n_items, avg_depth, log2(n_items) / 5.0,
-           max_depth); /* log_32(n_items) */
     return 0;
 }
 int mu_tests_run = 0;
