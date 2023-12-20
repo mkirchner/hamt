@@ -98,9 +98,9 @@ static int my_strncmp_1(const void *lhs, const void *rhs)
     return strncmp((const char *)lhs, (const char *)rhs, 1);
 }
 
-static uint32_t my_hash_1(const void *key, const size_t _)
+static uint32_t my_hash_1(const void *key, const ptrdiff_t gen)
 {
-    /* ignore gen here */
+    (void) gen;
     return murmur3_32((uint8_t *)key, 1, 0);
 }
 
@@ -303,7 +303,7 @@ static int my_keycmp_string(const void *lhs, const void *rhs)
     return strncmp((const char *)lhs, (const char *)rhs, nl > nr ? nl : nr);
 }
 
-static uint32_t my_keyhash_string(const void *key, const size_t gen)
+static uint32_t my_keyhash_string(const void *key, const ptrdiff_t gen)
 {
     uint32_t hash = murmur3_32((uint8_t *)key, strlen((const char *)key), gen);
     return hash;
@@ -468,7 +468,7 @@ MU_TEST_CASE(test_shrink_table)
                       "unexpected value in shrunk table");
         }
         table_free(t, TABLE(a0), 4);
-        mem_free(t->ator, a0);
+        mem_free(t->ator, a0, sizeof(struct hamt_node));
     }
     hamt_delete(t);
     return 0;
@@ -778,12 +778,10 @@ MU_TEST_CASE(test_persistent_remove_aspell_dict_en)
     return 0;
 }
 
-
-static uint32_t my_keyhash_universal(const void *key, const size_t gen)
+static uint32_t my_keyhash_universal(const void *key, const ptrdiff_t gen)
 {
-    return sedgewick_universal_hash((const char *) key, 0x8fffffff - (gen << 8));
+    return sedgewick_universal_hash((const char *)key, 0x8fffffff - (gen << 8));
 }
-
 
 MU_TEST_CASE(test_tree_depth)
 {
@@ -795,8 +793,8 @@ MU_TEST_CASE(test_tree_depth)
 
     words_load_numbers(&words, 0, n_items);
 
-    hamt_key_hash_fn hash_fns[2] = { my_keyhash_string, my_keyhash_universal };
-    char *hash_names[2] = { "murmur3", "sedgewick_universal" };
+    hamt_key_hash_fn hash_fns[2] = {my_keyhash_string, my_keyhash_universal};
+    char *hash_names[2] = {"murmur3", "sedgewick_universal"};
 
     for (size_t k = 0; k < 2; ++k) {
 
@@ -824,18 +822,12 @@ MU_TEST_CASE(test_tree_depth)
             avg_depth = (avg_depth * i + sr.hash->depth) / (i + 1);
             if (sr.hash->depth > max_depth) {
                 max_depth = sr.hash->depth;
-                // printf("New max depth %lu for %s\n", max_depth, words[i]);
             }
-            /*
-            else 
-            if (sr.hash->depth == max_depth) {
-                printf("Equal max depth %lu for %s\n", max_depth, words[i]);
-            }
-            */
         }
 
         hamt_delete(t);
-        printf("    %s (avg depth for %lu items: %0.3f, expected %0.3f, max: %lu)\n",
+        printf("    %s (avg depth for %lu items: %0.3f, expected %0.3f, max: "
+               "%lu)\n",
                hash_names[k], n_items, avg_depth, log2(n_items) / 5.0,
                max_depth); /* log_32(n_items) */
     }

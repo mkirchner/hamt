@@ -27,11 +27,34 @@
 #define KEY(a) a->as.kv.key
 
 /* Memory management */
-#define mem_alloc(ator, size) (ator)->malloc(size)
-#define mem_realloc(ator, ptr, size) (ator)->realloc(ptr, size)
-#define mem_free(ator, ptr) (ator)->free(ptr)
+#define mem_alloc(ator, size) (ator)->malloc(size, (ator)->ctx)
+#define mem_realloc(ator, ptr, size_old, size_new)                             \
+    (ator)->realloc(ptr, size_old, size_new, (ator)->ctx)
+#define mem_free(ator, ptr, size) (ator)->free(ptr, size, (ator)->ctx)
+
 /* Default allocator uses system malloc */
-struct hamt_allocator hamt_allocator_default = {malloc, realloc, free};
+static void *stdlib_malloc(const ptrdiff_t size, void *ctx)
+{
+    (void) ctx;
+    return malloc(size);
+}
+
+static void *stdlib_realloc(void *ptr, const ptrdiff_t old_size,
+                     const ptrdiff_t new_size, void *ctx)
+{
+    (void) ctx;
+    (void) old_size;
+    return realloc(ptr, new_size);
+}
+
+void stdlib_free(void *ptr, const ptrdiff_t size, void *ctx)
+{
+    (void) ctx;
+    (void) size;
+    return free(ptr);
+}
+
+struct hamt_allocator hamt_allocator_default = {stdlib_malloc, stdlib_realloc, stdlib_free};
 
 typedef struct hamt_node {
     union {
@@ -48,7 +71,7 @@ typedef struct hamt_node {
 
 struct hamt {
     struct hamt_node *root;
-    size_t size;
+    ptrdiff_t size;
     hamt_key_hash_fn key_hash;
     hamt_cmp_fn key_cmp;
     struct hamt_allocator *ator;
@@ -128,9 +151,9 @@ hamt_node *table_allocate(const struct hamt *h, size_t size)
     return (hamt_node *)mem_alloc(h->ator, (size * sizeof(hamt_node)));
 }
 
-void table_free(struct hamt *h, hamt_node *ptr, size_t size)
+void table_free(struct hamt *h, hamt_node *ptr, size_t nrows)
 {
-    mem_free(h->ator, ptr);
+    mem_free(h->ator, ptr, nrows * sizeof(struct hamt_node));
 }
 
 hamt_node *table_extend(struct hamt *h, hamt_node *anchor, size_t n_rows,
@@ -583,11 +606,11 @@ void delete_recursive(struct hamt *h, hamt_node *anchor)
 void hamt_delete(struct hamt *h)
 {
     delete_recursive(h, h->root);
-    mem_free(h->ator, h->root);
-    mem_free(h->ator, h);
+    mem_free(h->ator, h->root, sizeof(struct hamt_node));
+    mem_free(h->ator, h, sizeof(struct hamt));
 }
 
-size_t hamt_size(const struct hamt *trie) { return trie->size; }
+ptrdiff_t hamt_size(const struct hamt *trie) { return trie->size; }
 
 /** Iterators
  *
@@ -664,9 +687,9 @@ void hamt_it_delete(struct hamt_iterator *it)
     while (p) {
         tmp = p;
         p = p->next;
-        mem_free(it->trie->ator, tmp);
+        mem_free(it->trie->ator, tmp, sizeof(struct hamt_iterator_item));
     }
-    mem_free(it->trie->ator, it);
+    mem_free(it->trie->ator, it, sizeof(struct hamt_iterator));
 }
 
 inline bool hamt_it_valid(struct hamt_iterator *it) { return it->cur != NULL; }
@@ -697,7 +720,7 @@ struct hamt_iterator *hamt_it_next(struct hamt_iterator *it)
         }
         /* remove table from stack when all rows have been dealt with */
         iterator_pop_item(it);
-        mem_free(it->trie->ator, p);
+        mem_free(it->trie->ator, p, sizeof(struct hamt_iterator_item));
     }
     if (it)
         it->cur = NULL;

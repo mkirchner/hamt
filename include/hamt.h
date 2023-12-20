@@ -6,14 +6,24 @@
 #include <stdint.h>
 
 typedef int (*hamt_cmp_fn)(const void *lhs, const void *rhs);
-typedef uint32_t (*hamt_key_hash_fn)(const void *key, const size_t gen);
+typedef uint32_t (*hamt_key_hash_fn)(const void *key, const ptrdiff_t gen);
 
 struct hamt;
 
 struct hamt_allocator {
-    void *(*malloc)(const size_t size);
-    void *(*realloc)(void *chunk, const size_t size);
-    void (*free)(void *chunk);
+    /*
+     * The libhamt custom allocator interface. This is similar to the function
+     * pointer callback allocator interface exposed in e.g. libavl but extends
+     * the approach with
+     *   1. a user-defined context pointer to allow for state management
+     *   2. passing current and/or new size information to free() and
+     *      realloc() functions for (optional) sized deallocation
+     */
+    void *(*malloc)(const ptrdiff_t size, void *ctx);
+    void *(*realloc)(void *ptr, const ptrdiff_t old_size,
+                     const ptrdiff_t new_size, void *ctx);
+    void (*free)(void *ptr, const ptrdiff_t size, void *ctx);
+    void *ctx;
 };
 
 extern struct hamt_allocator hamt_allocator_default;
@@ -27,7 +37,7 @@ const void *hamt_set(struct hamt *trie, void *key, void *value);
 const struct hamt *hamt_pset(const struct hamt *trie, void *key, void *value);
 void *hamt_remove(struct hamt *trie, void *key);
 const struct hamt *hamt_premove(const struct hamt *trie, void *key);
-size_t hamt_size(const struct hamt *trie);
+ptrdiff_t hamt_size(const struct hamt *trie);
 
 struct hamt_iterator;
 
