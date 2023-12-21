@@ -30,8 +30,8 @@
 
 /* Memory management */
 #define mem_alloc(ator, size) (ator)->malloc(size)
-// #define mem_realloc(ator, ptr, size) (ator)->realloc(ptr, size)
 #define mem_free(ator, ptr) (ator)->free(ptr)
+
 /* Default allocator uses system malloc */
 struct hamt_allocator hamt_allocator_default = {malloc, realloc, free};
 
@@ -48,7 +48,7 @@ typedef struct hamt_node {
     } as;
 } hamt_node;
 
-struct pool_allocator;
+struct table_allocator;
 
 struct hamt {
     struct hamt_node *root;
@@ -56,8 +56,7 @@ struct hamt {
     hamt_key_hash_fn key_hash;
     hamt_cmp_fn key_cmp;
     struct hamt_allocator *ator;
-    struct pool_allocator *table_ator;
-    int table_pool_initialized;
+    struct table_allocator *table_ator;
 };
 
 /* hashing w/ state management */
@@ -129,122 +128,172 @@ static inline bool has_index(const hamt_node *anchor, size_t index)
     return INDEX(anchor) & (1 << index);
 }
 
-/* table memory management */
+/*
+ * Table memory management
+ *
+ * Table memory is managed using an array of fixed-size pool allocators with a
+ * freelist.
+ */
 
-typedef enum {
-    POOL_ALLOCATOR_SUCCESS,
-    POOL_ALLOCATOR_ERROR
-} pool_allocator_status;
+#define ALLOCATOR_STATS 1
 
-struct pool_allocator_stats {
+#ifdef ALLOCATOR_STATS
+struct table_allocator_stats {
     size_t alloc_count;
     size_t free_count;
 };
+#endif
 
-struct pool_freelist {
-    struct pool_freelist *next;
+struct table_allocator_freelist {
+    struct table_allocator_freelist *next;
 };
 
-struct pool_allocator {
-    hamt_node *buf;                 /* backing buffer */
-    size_t rsize;                   /* reserved size in number of nodes */
-    size_t table_size;
-    size_t size;                    /* total size == high water mark */
-    struct pool_freelist *fl;       /* free list head */
-    struct pool_allocator_stats stats;   /* statistics storage */
+struct table_allocator_chunk {
+    struct table_allocator_chunk *next;
+    ptrdiff_t size;
+    struct hamt_node *buf;
 };
 
-pool_allocator_status pool_allocator_create(
-        struct pool_allocator *pool,
-        size_t rsize,
-        size_t table_size)
+struct table_allocator {
+    struct table_allocator_chunk *chunk; /* backing buffer (chain of chunks) */
+    ptrdiff_t ix;                        /* high water mark in current chunk */
+    size_t chunk_count;                  /* number of chunks in the pool */
+    ptrdiff_t table_size;                /* number of rows in table */
+    struct table_allocator_freelist *fl; /* head of the free list */
+#ifdef ALLOCATOR_STATS
+    struct table_allocator_stats stats; /* statistics */
+#endif
+};
+
+int table_allocator_create(struct table_allocator *pool,
+                           ptrdiff_t initial_cache_size, ptrdiff_t table_size,
+                           struct hamt_allocator *backing_allocator)
 {
-    // FIXME: align rsize to pagesize
-    if ((pool->buf = (hamt_node *) mmap(
-                    0, rsize * sizeof(struct hamt_node) * table_size,
-                    PROT_READ|PROT_WRITE, 
-                    MAP_ANON|MAP_PRIVATE, -1, 0)) == MAP_FAILED) {
-        return POOL_ALLOCATOR_ERROR;
+    /* pool config */
+    *pool = (struct table_allocator){
+        .ix = 0, .chunk_count = 1, .table_size = table_size, .fl = NULL};
+#ifdef ALLOCATOR_STATS
+    pool->stats =
+        (struct table_allocator_stats){.alloc_count = 0, .free_count = 0};
+#endif
+    /* set up initial chunk */
+    pool->chunk =
+        backing_allocator->malloc(sizeof(struct table_allocator_chunk));
+    if (!pool->chunk)
+        goto err_no_cleanup;
+    pool->chunk->size = initial_cache_size * table_size;
+    pool->chunk->buf = (struct hamt_node *)backing_allocator->malloc(
+        pool->chunk->size * sizeof(struct hamt_node));
+    if (!pool->chunk->buf)
+        goto err_free_chunk;
+    pool->chunk->next = NULL;
+    return 0;
+err_free_chunk:
+    backing_allocator->free(pool->chunk);
+    pool->chunk = NULL;
+err_no_cleanup:
+    pool->chunk_count = 0;
+    return -1;
+}
+
+void table_allocator_delete(struct table_allocator *pool,
+                            struct hamt_allocator *backing_allocator)
+{
+    struct table_allocator_chunk *current_chunk = pool->chunk, *next_chunk;
+    /* free all buffers in all chunks */
+    while (current_chunk) {
+        backing_allocator->free(current_chunk->buf);
+        next_chunk = current_chunk->next;
+        backing_allocator->free(current_chunk);
+        current_chunk = next_chunk;
     }
-    pool->rsize = rsize;
-    pool->table_size = table_size;
-    pool->size = 0;
-    pool->fl = NULL;
-    pool->stats.alloc_count = 0;
-    pool->stats.free_count = 0;
-    return POOL_ALLOCATOR_SUCCESS;
 }
 
-void pool_allocator_delete(struct pool_allocator *pool)
+struct hamt_node *
+table_allocator_alloc(struct table_allocator *pool,
+                      struct hamt_allocator *backing_allocator)
 {
-    munmap(pool->buf, pool->rsize * pool->table_size * sizeof(hamt_node));
-}
-
-hamt_node *pool_allocator_alloc(struct pool_allocator *pool)
-{
-    /* maintains a free list that minimizes fragmentation when
-     * memory is returned */
+#ifdef ALLOCATOR_STATS
     pool->stats.alloc_count++;
+#endif
     /* attempt to return from the freelist */
     if (pool->fl) {
-        //printf("fl: %p\n", pool->fl);
-        struct pool_freelist *f = pool->fl;
-        // printf("Allocating from freelist: %p, new head: %p\n", f, pool->fl->next);
+        struct table_allocator_freelist *f = pool->fl;
         pool->fl = pool->fl->next;
-        return (hamt_node *)f;
+        return (struct hamt_node *)f;
     }
-    /* fall back to backing store if the freelist is empty */
-    hamt_node *p = &pool->buf[pool->size * pool->table_size];
-    pool->size++;
-    // printf("Allocating from mmap: %p\n", p);
+    /* freelist is empty, serve from chunk */
+    /* make sure chunk is not empty or create new one */
+    if (pool->ix == pool->chunk->size) {
+        struct table_allocator_chunk *chunk =
+            backing_allocator->malloc(sizeof(struct table_allocator_chunk));
+        if (!chunk)
+            goto err_no_cleanup;
+        /* create new chunk w/ same size as previous */
+        chunk->size = pool->chunk->size;
+        chunk->buf = (struct hamt_node *)backing_allocator->malloc(
+            chunk->size * sizeof(struct hamt_node));
+        if (!chunk->buf)
+            goto err_free_chunk;
+        chunk->next = pool->chunk;
+        pool->chunk = chunk;
+        pool->ix = 0;
+        pool->chunk_count++;
+    }
+    /* serve from chunk */
+    struct hamt_node *p = &pool->chunk->buf[pool->ix];
+    pool->ix++;
     return p;
+err_free_chunk:
+    backing_allocator->free(pool->chunk);
+    pool->chunk = NULL;
+err_no_cleanup:
+    return NULL;
 }
 
-void pool_allocator_free(struct pool_allocator *pool, void *p)
+void table_allocator_free(struct table_allocator *pool, void *p)
 {
-    // FIXME: boundary checks for pointer pos?
-    void *start = pool->buf;
-	void *end = &pool->buf[pool->size*pool->table_size];
-    if (p) {
-        // printf("Bucket %lu boundaries: [%p <= %p < %p)\n", pool->table_size, start, p, end);
-        assert((start <= p && p < end) && "Invalid free");
-        pool->stats.free_count++;
-        /* insert returned memory at the front of the freelist */
-        struct pool_freelist *new_head = (struct pool_freelist *)p;
-        // printf("Freeing to freelist: new head: %p in front of %p\n", p, pool->fl);
-        new_head->next = pool->fl;
-        pool->fl = new_head;
+#ifdef ALLOCATOR_STATS
+    pool->stats.free_count++;
+#endif
+    /* insert returned memory at the front of the freelist */
+    struct table_allocator_freelist *head =
+        (struct table_allocator_freelist *)p;
+    head->next = pool->fl;
+    pool->fl = head;
+}
+
+void table_allocators_init(struct table_allocator *pools,
+                           struct hamt_allocator *backing_allocator)
+{
+    for (size_t i = 0; i < 32; ++i) {
+        // FIXME: sizes need to be parameters
+        table_allocator_create(&pools[i], 1024 * 1024 * 1024, i + 1,
+                               backing_allocator);
     }
 }
 
-int pool_initialized = 0;
-
-void table_pools_init(struct pool_allocator *pools)
-{
-    // printf("initializing table pool...");
-    for (size_t i = 0; i < 32; ++i) {
-        pool_allocator_create(&pools[i], 1024*1024*1024, i+1);
-    }
-}
-
-void table_pools_destroy(struct pool_allocator *pools)
+void table_allocators_destroy(struct table_allocator *pools,
+                              struct hamt_allocator *backing_allocator)
 {
     for (size_t i = 0; i < 32; ++i) {
-        pool_allocator_delete(&pools[i]);
+        table_allocator_delete(&pools[i], backing_allocator);
     }
 }
 
 hamt_node *table_allocate(const struct hamt *h, size_t size)
 {
-    if (size == 0) return NULL;
+    if (size == 0)
+        return NULL;
     // printf("Allocating from bucket %lu, size %lu\n", size-1, size);
-    return pool_allocator_alloc(&h->table_ator[size-1]);
+    return table_allocator_alloc(&h->table_ator[size - 1], h->ator);
 }
 
 void table_free(struct hamt *h, hamt_node *ptr, size_t size)
 {
-   // printf("De-allocating to bucket %lu, size %lu\n", size-1, size);
-   if (size) pool_allocator_free(&h->table_ator[size-1], ptr);
+    // printf("De-allocating to bucket %lu, size %lu\n", size-1, size);
+    if (size)
+        table_allocator_free(&h->table_ator[size - 1], ptr);
 }
 
 hamt_node *table_extend(struct hamt *h, hamt_node *anchor, size_t n_rows,
@@ -332,8 +381,8 @@ struct hamt *hamt_create(hamt_key_hash_fn key_hash, hamt_cmp_fn key_cmp,
     trie->size = 0;
     trie->key_hash = key_hash;
     trie->key_cmp = key_cmp;
-    trie->table_ator = mem_alloc(ator, sizeof(struct pool_allocator) * 32);
-    table_pools_init(trie->table_ator);
+    trie->table_ator = mem_alloc(ator, sizeof(struct table_allocator) * 32);
+    table_allocators_init(trie->table_ator, trie->ator);
     return trie;
 }
 
@@ -701,7 +750,7 @@ void delete_recursive(struct hamt *h, hamt_node *anchor)
 void hamt_delete(struct hamt *h)
 {
     delete_recursive(h, h->root);
-    table_pools_destroy(h->table_ator);
+    table_allocators_destroy(h->table_ator, h->ator);
     mem_free(h->ator, h->table_ator);
     mem_free(h->ator, h->root);
     mem_free(h->ator, h);

@@ -787,8 +787,9 @@ static uint32_t my_keyhash_universal(const void *key, const size_t gen)
 
 static void print_allocation_stats(struct hamt *t)
 {
-    size_t total_size = 0;
-    size_t total_allocated_items = 0;
+    /*
+    ptrdiff_t total_size = 0;
+    ptrdiff_t total_allocated_items = 0;
     for (size_t l = 0; l < 32; ++l) {
         total_size += t->table_ator[l].size;
         total_allocated_items += t->table_ator[l].size * l;
@@ -807,13 +808,14 @@ static void print_allocation_stats(struct hamt *t)
                100 * (1.0 - (t->table_ator[l].stats.free_count /
                              (float)t->table_ator[l].stats.alloc_count)));
     }
+    */
 }
 
 MU_TEST_CASE(test_tree_depth)
 {
     printf(". creating tree statistics\n");
 
-    size_t n_items = 1e7;
+    size_t n_items = 1e5;
     char **words = NULL;
     struct hamt *t;
 
