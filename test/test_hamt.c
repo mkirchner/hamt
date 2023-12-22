@@ -245,8 +245,6 @@ MU_TEST_CASE(test_set_with_collisions)
     t->root->as.table.ptr = t_root;
     t->root->as.table.index = (1 << 23) | (1 << 31);
 
-    printf("root: %p\n", t_root);
-
     /* insert value and find it again */
     const hamt_node *new_node =
         set(t, t->root, t->key_hash, t->key_cmp, &keys[2], &values[2]);
@@ -787,7 +785,6 @@ static uint32_t my_keyhash_universal(const void *key, const size_t gen)
 
 static void print_allocation_stats(struct hamt *t)
 {
-    /*
     ptrdiff_t total_size = 0;
     ptrdiff_t total_allocated_items = 0;
     for (size_t l = 0; l < 32; ++l) {
@@ -808,7 +805,6 @@ static void print_allocation_stats(struct hamt *t)
                100 * (1.0 - (t->table_ator[l].stats.free_count /
                              (float)t->table_ator[l].stats.alloc_count)));
     }
-    */
 }
 
 MU_TEST_CASE(test_tree_depth)
@@ -874,6 +870,7 @@ int mu_tests_run = 0;
 
 MU_TEST_SUITE(test_suite)
 {
+    MU_RUN_TEST(test_aspell_dict_en);
     MU_RUN_TEST(test_popcount);
     MU_RUN_TEST(test_compact_index);
     MU_RUN_TEST(test_tagging);
@@ -881,7 +878,6 @@ MU_TEST_SUITE(test_suite)
     MU_RUN_TEST(test_set_with_collisions);
     MU_RUN_TEST(test_set_whole_enchilada_00);
     MU_RUN_TEST(test_set_stringkeys);
-    MU_RUN_TEST(test_aspell_dict_en);
     MU_RUN_TEST(test_setget_large_scale);
     MU_RUN_TEST(test_shrink_table);
     MU_RUN_TEST(test_gather_table);
