@@ -48,7 +48,9 @@ typedef struct hamt_node {
     } as;
 } hamt_node;
 
+#ifdef WITH_TABLE_CACHE
 struct table_allocator;
+#endif
 
 struct hamt {
     struct hamt_node *root;
@@ -56,7 +58,9 @@ struct hamt {
     hamt_key_hash_fn key_hash;
     hamt_cmp_fn key_cmp;
     struct hamt_allocator *ator;
+#ifdef WITH_TABLE_CACHE
     struct table_allocator *table_ator;
+#endif
 };
 
 /* hashing w/ state management */
@@ -135,9 +139,9 @@ static inline bool has_index(const hamt_node *anchor, size_t index)
  * freelist.
  */
 
-#define ALLOCATOR_STATS 1
+#ifdef WITH_TABLE_CACHE
 
-#ifdef ALLOCATOR_STATS
+#ifdef WITH_TABLE_CACHE_STATS
 struct table_allocator_stats {
     size_t alloc_count;
     size_t free_count;
@@ -161,7 +165,7 @@ struct table_allocator {
     size_t chunk_count;                  /* number of chunks in the pool */
     ptrdiff_t table_size;                /* number of rows in table */
     struct table_allocator_freelist *fl; /* head of the free list */
-#ifdef ALLOCATOR_STATS
+#ifdef WITH_TABLE_CACHE_STATS
     struct table_allocator_stats stats; /* statistics */
 #endif
 };
@@ -183,7 +187,7 @@ int table_allocator_create(struct table_allocator *pool,
     if (!pool->chunk->buf)
         goto err_free_chunk;
     pool->chunk->next = NULL;
-#ifdef ALLOCATOR_STATS
+#ifdef WITH_TABLE_CACHE_STATS
     /* set up stats storage */
     pool->stats =
         (struct table_allocator_stats){.alloc_count = 0, .free_count = 0};
@@ -217,7 +221,7 @@ struct hamt_node *
 table_allocator_alloc(struct table_allocator *pool,
                       struct hamt_allocator *backing_allocator)
 {
-#ifdef ALLOCATOR_STATS
+#ifdef WITH_TABLE_CACHE_STATS
     pool->stats.alloc_count++;
 #endif
     /* attempt to return from the freelist */
@@ -257,7 +261,7 @@ err_no_cleanup:
 
 void table_allocator_free(struct table_allocator *pool, void *p)
 {
-#ifdef ALLOCATOR_STATS
+#ifdef WITH_TABLE_CACHE_STATS
     pool->stats.free_count++;
 #endif
     /* insert returned memory at the front of the freelist */
@@ -284,18 +288,27 @@ void table_allocators_destroy(struct table_allocator *pools,
         table_allocator_delete(&pools[i], backing_allocator);
     }
 }
+#endif /* WITH_TABLE_CACHE */
 
 hamt_node *table_allocate(const struct hamt *h, size_t size)
 {
     if (size == 0)
         return NULL;
+#ifdef WITH_TABLE_CACHE
     return table_allocator_alloc(&h->table_ator[size - 1], h->ator);
+#else
+    return mem_alloc(h->ator, size * sizeof(struct hamt_node));
+#endif
 }
 
 void table_free(struct hamt *h, hamt_node *ptr, size_t size)
 {
     if (ptr && size)
+#ifdef WITH_TABLE_CACHE
         table_allocator_free(&h->table_ator[size - 1], ptr);
+#else
+        mem_free(h->ator, ptr);
+#endif
 }
 
 hamt_node *table_extend(struct hamt *h, hamt_node *anchor, size_t n_rows,
@@ -383,8 +396,10 @@ struct hamt *hamt_create(hamt_key_hash_fn key_hash, hamt_cmp_fn key_cmp,
     trie->size = 0;
     trie->key_hash = key_hash;
     trie->key_cmp = key_cmp;
+#ifdef WITH_TABLE_CACHE
     trie->table_ator = mem_alloc(ator, sizeof(struct table_allocator) * 32);
     table_allocators_init(trie->table_ator, trie->ator);
+#endif
     return trie;
 }
 
@@ -396,7 +411,9 @@ struct hamt *hamt_dup(const struct hamt *h)
     trie->size = h->size;
     trie->key_hash = h->key_hash;
     trie->key_cmp = h->key_cmp;
+#ifdef WITH_TABLE_CACHE
     trie->table_ator = h->table_ator; /* shallow duplication! */
+#endif
     return trie;
 }
 
@@ -735,7 +752,6 @@ const struct hamt *hamt_premove(const struct hamt *trie, void *key)
 /* delete recursively from anchor */
 void delete_recursive(struct hamt *h, hamt_node *anchor)
 {
-    // FIXME: n is the wrong n?
     if (TABLE(anchor)) {
         assert(!is_value(VALUE(anchor)) && "delete requires an internal node");
         size_t n = get_popcount(INDEX(anchor));
@@ -751,9 +767,13 @@ void delete_recursive(struct hamt *h, hamt_node *anchor)
 
 void hamt_delete(struct hamt *h)
 {
+    // FIXME: cannot delete the hamt when persistent since that will
+    //        delete the ator and table_ator of all hamts
     delete_recursive(h, h->root);
+#ifdef WITH_TABLE_CACHE
     table_allocators_destroy(h->table_ator, h->ator);
     mem_free(h->ator, h->table_ator);
+#endif
     mem_free(h->ator, h->root);
     mem_free(h->ator, h);
 }

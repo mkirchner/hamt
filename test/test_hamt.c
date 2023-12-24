@@ -783,6 +783,8 @@ static uint32_t my_keyhash_universal(const void *key, const size_t gen)
     return sedgewick_universal_hash((const char *)key, 0x8fffffff - (gen << 8));
 }
 
+#ifdef WITH_TABLE_CACHE
+#ifdef WITH_TABLE_CACHE_STATS
 static void print_allocation_stats(struct hamt *t)
 {
     ptrdiff_t total_size = 0;
@@ -806,6 +808,8 @@ static void print_allocation_stats(struct hamt *t)
                              (float)t->table_ator[l].stats.alloc_count)));
     }
 }
+#endif
+#endif
 
 MU_TEST_CASE(test_tree_depth)
 {
@@ -827,7 +831,11 @@ MU_TEST_CASE(test_tree_depth)
             hamt_set(t, words[i], words[i]);
         }
         printf("\n  [ %s ]\n", hash_names[k]);
+#ifdef WITH_TABLE_CACHE
+#ifdef WITH_TABLE_CACHE_STATS
         print_allocation_stats(t);
+#endif
+#endif
 
         /* Calculate the avg tree depth across all items */
         double avg_depth = 0.0;
@@ -888,13 +896,9 @@ MU_TEST_SUITE(test_suite)
     MU_RUN_TEST(test_iterators_1m);
     MU_RUN_TEST(test_tree_depth);
     // persistent data structure tests
-    /*
-     * disable persistent data structure tests for allocator pool testing
-     *
     MU_RUN_TEST(test_persistent_set);
     MU_RUN_TEST(test_persistent_aspell_dict_en);
     MU_RUN_TEST(test_persistent_remove_aspell_dict_en);
-    */
     return 0;
 }
 
