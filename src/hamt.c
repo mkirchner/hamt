@@ -141,21 +141,21 @@ static inline bool has_index(const struct hamt_node *anchor, size_t index)
 
 #if defined(WITH_TABLE_CACHE)
 
-# if defined(WITH_TABLE_CACHE_STATS)
+#if defined(WITH_TABLE_CACHE_STATS)
 struct table_allocator_stats {
     size_t alloc_count;
     size_t free_count;
 };
-# endif
+#endif
 
 struct table_allocator_freelist {
     struct table_allocator_freelist *next;
 };
 
 struct table_allocator_chunk {
-    struct table_allocator_chunk *next;  /* pointer to next chunk */
-    ptrdiff_t size;                      /* buffer size in count */
-    struct hamt_node *buf;               /* pointer to the actual buffer */
+    struct table_allocator_chunk *next; /* pointer to next chunk */
+    ptrdiff_t size;                     /* buffer size in count */
+    struct hamt_node *buf;              /* pointer to the actual buffer */
 };
 
 struct table_allocator {
@@ -165,9 +165,9 @@ struct table_allocator {
     size_t chunk_count;                  /* number of chunks in the pool */
     ptrdiff_t table_size;                /* number of rows in table */
     struct table_allocator_freelist *fl; /* head of the free list */
-# if defined(WITH_TABLE_CACHE_STATS)
+#if defined(WITH_TABLE_CACHE_STATS)
     struct table_allocator_stats stats; /* statistics */
-# endif
+#endif
 };
 
 int table_allocator_create(struct table_allocator *pool,
@@ -175,23 +175,28 @@ int table_allocator_create(struct table_allocator *pool,
                            struct hamt_allocator *backing_allocator)
 {
     /* pool config */
-    *pool = (struct table_allocator){
-        .chunk = NULL, .size = 0, .buf_ix = 0, .chunk_count = 1, .table_size = table_size, .fl = NULL};
+    *pool = (struct table_allocator){.chunk = NULL,
+                                     .size = 0,
+                                     .buf_ix = 0,
+                                     .chunk_count = 1,
+                                     .table_size = table_size,
+                                     .fl = NULL};
     /* set up initial chunk */
     pool->chunk =
         backing_allocator->malloc(sizeof(struct table_allocator_chunk));
     if (!pool->chunk)
         goto err_no_cleanup;
     pool->chunk->size = initial_cache_size * table_size;
-    pool->chunk->buf = (struct hamt_node *)backing_allocator->malloc(pool->chunk->size * sizeof(struct hamt_node));
+    pool->chunk->buf = (struct hamt_node *)backing_allocator->malloc(
+        pool->chunk->size * sizeof(struct hamt_node));
     if (!pool->chunk->buf)
         goto err_free_chunk;
     pool->chunk->next = NULL;
-# if defined(WITH_TABLE_CACHE_STATS)
+#if defined(WITH_TABLE_CACHE_STATS)
     /* set up stats storage */
     pool->stats =
         (struct table_allocator_stats){.alloc_count = 0, .free_count = 0};
-# endif
+#endif
     return 0;
 err_free_chunk:
     backing_allocator->free(pool->chunk);
@@ -221,9 +226,9 @@ struct hamt_node *
 table_allocator_alloc(struct table_allocator *pool,
                       struct hamt_allocator *backing_allocator)
 {
-# if defined(WITH_TABLE_CACHE_STATS)
+#if defined(WITH_TABLE_CACHE_STATS)
     pool->stats.alloc_count++;
-# endif
+#endif
     /* attempt to return from the freelist */
     if (pool->fl) {
         struct table_allocator_freelist *f = pool->fl;
@@ -239,7 +244,8 @@ table_allocator_alloc(struct table_allocator *pool,
             goto err_no_cleanup;
         /* create new chunk w/ same size as previous */
         chunk->size = pool->chunk->size;
-        chunk->buf = (struct hamt_node *)backing_allocator->malloc(chunk->size * sizeof(struct hamt_node));
+        chunk->buf = (struct hamt_node *)backing_allocator->malloc(
+            chunk->size * sizeof(struct hamt_node));
         if (!chunk->buf)
             goto err_free_chunk;
         chunk->next = pool->chunk;
@@ -261,9 +267,9 @@ err_no_cleanup:
 
 void table_allocator_free(struct table_allocator *pool, void *p)
 {
-# if defined(WITH_TABLE_CACHE_STATS)
+#if defined(WITH_TABLE_CACHE_STATS)
     pool->stats.free_count++;
-# endif
+#endif
     /* insert returned memory at the front of the freelist */
     struct table_allocator_freelist *head =
         (struct table_allocator_freelist *)p;
@@ -311,15 +317,16 @@ void table_free(struct hamt *h, struct hamt_node *ptr, size_t size)
 #endif
 }
 
-struct hamt_node *table_extend(struct hamt *h, struct hamt_node *anchor, size_t n_rows,
-                        uint32_t index, uint32_t pos)
+struct hamt_node *table_extend(struct hamt *h, struct hamt_node *anchor,
+                               size_t n_rows, uint32_t index, uint32_t pos)
 {
     struct hamt_node *new_table = table_allocate(h, n_rows + 1);
     if (!new_table)
         return NULL;
     if (n_rows > 0) {
         /* copy over table */
-        memcpy(&new_table[0], &TABLE(anchor)[0], pos * sizeof(struct hamt_node));
+        memcpy(&new_table[0], &TABLE(anchor)[0],
+               pos * sizeof(struct hamt_node));
         /* note: this works since (n_rows - pos) == 0 for cases
          * where we're adding the new k/v pair at the end (i.e. memcpy(a, b, 0)
          * is a nop) */
@@ -333,8 +340,8 @@ struct hamt_node *table_extend(struct hamt *h, struct hamt_node *anchor, size_t 
     return anchor;
 }
 
-struct hamt_node *table_shrink(struct hamt *h, struct hamt_node *anchor, size_t n_rows,
-                        uint32_t index, uint32_t pos)
+struct hamt_node *table_shrink(struct hamt *h, struct hamt_node *anchor,
+                               size_t n_rows, uint32_t index, uint32_t pos)
 {
     /* debug assertions */
     assert(anchor && "Anchor cannot be NULL");
@@ -345,9 +352,11 @@ struct hamt_node *table_shrink(struct hamt *h, struct hamt_node *anchor, size_t 
     uint32_t new_index = 0;
     if (n_rows > 0) {
         new_table = table_allocate(h, n_rows - 1);
-        if (!new_table) return NULL;
+        if (!new_table)
+            return NULL;
         new_index = INDEX(anchor) & ~(1 << index);
-        memcpy(&new_table[0], &TABLE(anchor)[0], pos * sizeof(struct hamt_node));
+        memcpy(&new_table[0], &TABLE(anchor)[0],
+               pos * sizeof(struct hamt_node));
         memcpy(&new_table[pos], &TABLE(anchor)[pos + 1],
                (n_rows - pos - 1) * sizeof(struct hamt_node));
     }
@@ -357,7 +366,8 @@ struct hamt_node *table_shrink(struct hamt *h, struct hamt_node *anchor, size_t 
     return anchor;
 }
 
-struct hamt_node *table_gather(struct hamt *h, struct hamt_node *anchor, uint32_t pos)
+struct hamt_node *table_gather(struct hamt *h, struct hamt_node *anchor,
+                               uint32_t pos)
 {
     /* debug assertions */
     assert(anchor && "Anchor cannot be NULL");
@@ -380,7 +390,8 @@ struct hamt_node *table_dup(const struct hamt *h, struct hamt_node *anchor)
     int n_rows = get_popcount(INDEX(anchor));
     struct hamt_node *new_table = table_allocate(h, n_rows);
     if (new_table) {
-        memcpy(&new_table[0], &TABLE(anchor)[0], n_rows * sizeof(struct hamt_node));
+        memcpy(&new_table[0], &TABLE(anchor)[0],
+               n_rows * sizeof(struct hamt_node));
     }
     return new_table;
 }
@@ -416,8 +427,10 @@ struct hamt *hamt_dup(const struct hamt *h)
     return trie;
 }
 
-static const struct hamt_node *insert_kv(struct hamt *h, struct hamt_node *anchor,
-                                  struct hash_state *hash, void *key, void *value)
+static const struct hamt_node *insert_kv(struct hamt *h,
+                                         struct hamt_node *anchor,
+                                         struct hash_state *hash, void *key,
+                                         void *value)
 {
     /* calculate position in new table */
     uint32_t ix = hash_get_index(hash);
@@ -436,19 +449,21 @@ static const struct hamt_node *insert_kv(struct hamt *h, struct hamt_node *ancho
     return &new_table[pos];
 }
 
-static const struct hamt_node *insert_table(struct hamt *h, struct hamt_node *anchor,
-                                     struct hash_state *hash, void *key, void *value)
+static const struct hamt_node *insert_table(struct hamt *h,
+                                            struct hamt_node *anchor,
+                                            struct hash_state *hash, void *key,
+                                            void *value)
 {
     /* FIXME: check for alloc failure and bail out correctly (deleting the
      *        incomplete subtree */
 
     /* Collect everything we know about the existing value */
-    struct hash_state *x_hash =
-        &(struct hash_state){.key = KEY(anchor),
-                      .hash_fn = hash->hash_fn,
-                      .hash = hash->hash_fn(KEY(anchor), hash->depth / 5),
-                      .depth = hash->depth,
-                      .shift = hash->shift};
+    struct hash_state *x_hash = &(struct hash_state){
+        .key = KEY(anchor),
+        .hash_fn = hash->hash_fn,
+        .hash = hash->hash_fn(KEY(anchor), hash->depth / 5),
+        .depth = hash->depth,
+        .shift = hash->shift};
     void *x_value = VALUE(anchor); /* tagged (!) value ptr */
     /* increase depth until the hashes diverge, building a list
      * of tables along the way */
@@ -484,9 +499,10 @@ static const struct hamt_node *insert_table(struct hamt *h, struct hamt_node *an
     return &TABLE(anchor)[pos];
 }
 
-static struct search_result search_recursive(const struct hamt *h, struct hamt_node *anchor,
-                                      struct hash_state *hash, hamt_cmp_fn cmp_eq,
-                                      const void *key, struct hamt_node *path)
+static struct search_result
+search_recursive(const struct hamt *h, struct hamt_node *anchor,
+                 struct hash_state *hash, hamt_cmp_fn cmp_eq, const void *key,
+                 struct hamt_node *path)
 {
     assert(!is_value(VALUE(anchor)) &&
            "Invariant: path copy requires an internal node");
@@ -512,16 +528,16 @@ static struct search_result search_recursive(const struct hamt *h, struct hamt_n
             if ((*cmp_eq)(key, KEY(next)) == 0) {
                 /* keys match */
                 struct search_result result = {.status = SEARCH_SUCCESS,
-                                        .anchor = copy,
-                                        .value = next,
-                                        .hash = hash};
+                                               .anchor = copy,
+                                               .value = next,
+                                               .hash = hash};
                 return result;
             }
             /* not found: same hash but different key */
             struct search_result result = {.status = SEARCH_FAIL_KEYMISMATCH,
-                                    .anchor = copy,
-                                    .value = next,
-                                    .hash = hash};
+                                           .anchor = copy,
+                                           .value = next,
+                                           .hash = hash};
             return result;
         } else {
             /* For table entries, recurse to the next level */
@@ -533,19 +549,20 @@ static struct search_result search_recursive(const struct hamt *h, struct hamt_n
     }
     /* expected index is not set, terminate search */
     struct search_result result = {.status = SEARCH_FAIL_NOTFOUND,
-                            .anchor = copy,
-                            .value = NULL,
-                            .hash = hash};
+                                   .anchor = copy,
+                                   .value = NULL,
+                                   .hash = hash};
     return result;
 }
 
 const void *hamt_get(const struct hamt *trie, void *key)
 {
-    struct hash_state *hash = &(struct hash_state){.key = key,
-                                     .hash_fn = trie->key_hash,
-                                     .hash = trie->key_hash(key, 0),
-                                     .depth = 0,
-                                     .shift = 0};
+    struct hash_state *hash =
+        &(struct hash_state){.key = key,
+                             .hash_fn = trie->key_hash,
+                             .hash = trie->key_hash(key, 0),
+                             .depth = 0,
+                             .shift = 0};
     struct search_result sr =
         search_recursive(trie, trie->root, hash, trie->key_cmp, key, NULL);
     if (sr.status == SEARCH_SUCCESS) {
@@ -555,15 +572,16 @@ const void *hamt_get(const struct hamt *trie, void *key)
 }
 
 static const struct hamt_node *set(struct hamt *h, struct hamt_node *anchor,
-                            hamt_key_hash_fn hash_fn, hamt_cmp_fn cmp_fn,
-                            void *key, void *value)
+                                   hamt_key_hash_fn hash_fn, hamt_cmp_fn cmp_fn,
+                                   void *key, void *value)
 {
     struct hash_state *hash = &(struct hash_state){.key = key,
-                                     .hash_fn = hash_fn,
-                                     .hash = hash_fn(key, 0),
-                                     .depth = 0,
-                                     .shift = 0};
-    struct search_result sr = search_recursive(h, anchor, hash, cmp_fn, key, NULL);
+                                                   .hash_fn = hash_fn,
+                                                   .hash = hash_fn(key, 0),
+                                                   .depth = 0,
+                                                   .shift = 0};
+    struct search_result sr =
+        search_recursive(h, anchor, hash, cmp_fn, key, NULL);
     const struct hamt_node *inserted;
     switch (sr.status) {
     case SEARCH_SUCCESS:
@@ -593,7 +611,8 @@ const void *hamt_set(struct hamt *trie, void *key, void *value)
 }
 
 static struct path_result search(const struct hamt *h, struct hamt_node *anchor,
-                          struct hash_state *hash, hamt_cmp_fn cmp_eq, const void *key)
+                                 struct hash_state *hash, hamt_cmp_fn cmp_eq,
+                                 const void *key)
 {
     struct path_result pr;
     pr.root = table_allocate(h, 1);
@@ -604,10 +623,10 @@ static struct path_result search(const struct hamt *h, struct hamt_node *anchor,
 const struct hamt *hamt_pset(const struct hamt *h, void *key, void *value)
 {
     struct hash_state *hash = &(struct hash_state){.key = key,
-                                     .hash_fn = h->key_hash,
-                                     .hash = h->key_hash(key, 0),
-                                     .depth = 0,
-                                     .shift = 0};
+                                                   .hash_fn = h->key_hash,
+                                                   .hash = h->key_hash(key, 0),
+                                                   .depth = 0,
+                                                   .shift = 0};
     struct path_result pr = search(h, h->root, hash, h->key_cmp, key);
     struct hamt *cp = hamt_dup(h);
     cp->root = pr.root;
@@ -629,10 +648,10 @@ const struct hamt *hamt_pset(const struct hamt *h, void *key, void *value)
     return cp;
 }
 
-static struct remove_result rem_recursive(struct hamt *h, struct hamt_node *root,
-                                   struct hamt_node *anchor, struct hash_state *hash,
-                                   hamt_cmp_fn cmp_eq, const void *key,
-                                   struct hamt_node *path)
+static struct remove_result
+rem_recursive(struct hamt *h, struct hamt_node *root, struct hamt_node *anchor,
+              struct hash_state *hash, hamt_cmp_fn cmp_eq, const void *key,
+              struct hamt_node *path)
 {
     assert(!is_value(VALUE(anchor)) &&
            "Invariant: removal requires an internal node");
@@ -673,7 +692,7 @@ static struct remove_result rem_recursive(struct hamt *h, struct hamt_node *root
                     if (is_value(VALUE(other))) {
                         copy = table_gather(h, copy, !pos);
                         return (struct remove_result){.status = REMOVE_GATHERED,
-                                               .value = value};
+                                                      .value = value};
                     } else {
                         /* otherwise shrink the node to n_rows == 1 */
                         copy =
@@ -681,10 +700,11 @@ static struct remove_result rem_recursive(struct hamt *h, struct hamt_node *root
                     }
                 }
                 return (struct remove_result){.status = REMOVE_SUCCESS,
-                                       .value = value};
+                                              .value = value};
             }
             /* not found: same hash but different key */
-            return (struct remove_result){.status = REMOVE_NOTFOUND, .value = NULL};
+            return (struct remove_result){.status = REMOVE_NOTFOUND,
+                                          .value = NULL};
         } else {
             /* For table entries, recurse to the next level */
             assert(TABLE(next) != NULL &&
@@ -699,18 +719,19 @@ static struct remove_result rem_recursive(struct hamt *h, struct hamt_node *root
                 if (n_rows == 1) {
                     copy = table_gather(h, copy, 0);
                     return (struct remove_result){.status = REMOVE_GATHERED,
-                                           .value = result.value};
+                                                  .value = result.value};
                 }
             }
             return (struct remove_result){.status = REMOVE_SUCCESS,
-                                   .value = result.value};
+                                          .value = result.value};
         }
     }
     return (struct remove_result){.status = REMOVE_NOTFOUND, .value = NULL};
 }
 
-static struct path_result rem(struct hamt *h, struct hamt_node *root, struct hamt_node *anchor,
-                       struct hash_state *hash, hamt_cmp_fn cmp_eq, const void *key)
+static struct path_result rem(struct hamt *h, struct hamt_node *root,
+                              struct hamt_node *anchor, struct hash_state *hash,
+                              hamt_cmp_fn cmp_eq, const void *key)
 {
     struct path_result pr;
     pr.root = table_allocate(h, 1);
@@ -720,13 +741,14 @@ static struct path_result rem(struct hamt *h, struct hamt_node *root, struct ham
 
 void *hamt_remove(struct hamt *trie, void *key)
 {
-    struct hash_state *hash = &(struct hash_state){.key = key,
-                                     .hash_fn = trie->key_hash,
-                                     .hash = trie->key_hash(key, 0),
-                                     .depth = 0,
-                                     .shift = 0};
+    struct hash_state *hash =
+        &(struct hash_state){.key = key,
+                             .hash_fn = trie->key_hash,
+                             .hash = trie->key_hash(key, 0),
+                             .depth = 0,
+                             .shift = 0};
     struct remove_result rr = rem_recursive(trie, trie->root, trie->root, hash,
-                                     trie->key_cmp, key, NULL);
+                                            trie->key_cmp, key, NULL);
     if (rr.status == REMOVE_SUCCESS || rr.status == REMOVE_GATHERED) {
         trie->size -= 1;
         return untagged(rr.value);
@@ -736,11 +758,12 @@ void *hamt_remove(struct hamt *trie, void *key)
 
 const struct hamt *hamt_premove(const struct hamt *trie, void *key)
 {
-    struct hash_state *hash = &(struct hash_state){.key = key,
-                                     .hash_fn = trie->key_hash,
-                                     .hash = trie->key_hash(key, 0),
-                                     .depth = 0,
-                                     .shift = 0};
+    struct hash_state *hash =
+        &(struct hash_state){.key = key,
+                             .hash_fn = trie->key_hash,
+                             .hash = trie->key_hash(key, 0),
+                             .depth = 0,
+                             .shift = 0};
     struct hamt *cp = hamt_dup(trie);
     struct path_result pr = rem(cp, cp->root, cp->root, hash, cp->key_cmp, key);
     cp->root = pr.root;
@@ -806,8 +829,9 @@ struct hamt_iterator {
     struct hamt_iterator_item *tos; /* top of stack */
 };
 
-static struct hamt_iterator_item *
-iterator_push_item(struct hamt_iterator *it, struct hamt_node *anchor, size_t pos)
+static struct hamt_iterator_item *iterator_push_item(struct hamt_iterator *it,
+                                                     struct hamt_node *anchor,
+                                                     size_t pos)
 {
     /* push new item onto top of stack */
     struct hamt_iterator_item *new_item =

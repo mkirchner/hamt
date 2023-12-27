@@ -20,4 +20,3 @@ uint32_t sedgewick_universal_hash(const char *str, uint32_t M)
         h = (a * h + *str) % M;
     return h;
 }
-
