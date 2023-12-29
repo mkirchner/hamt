@@ -352,7 +352,8 @@ struct hamt_node *table_shrink(struct hamt *h, struct hamt_node *anchor,
     uint32_t new_index = 0;
     if (n_rows > 1) {
         new_table = table_allocate(h, n_rows - 1);
-        if (!new_table) return NULL;  /* mem allocation error */
+        if (!new_table)
+            return NULL; /* mem allocation error */
         new_index = INDEX(anchor) & ~(1 << index);
         memcpy(&new_table[0], &TABLE(anchor)[0],
                pos * sizeof(struct hamt_node));
