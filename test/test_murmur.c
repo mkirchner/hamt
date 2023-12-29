@@ -40,7 +40,7 @@ MU_TEST_SUITE(test_suite)
     return 0;
 }
 
-int main()
+int main(void)
 {
     printf("---=[ Murmur hash function test suite\n");
     char *result = test_suite();

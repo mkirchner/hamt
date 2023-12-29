@@ -18,27 +18,32 @@
  *
  * @param ix Index of `node` in its table (for illustratrion only)
  * @param node Pointer to the anchor node
- * @param depth Tree depth as a parameter
+ * @param depth Tree depth as a parameter, 0-based
  */
 static void debug_print_string(size_t ix, const struct hamt_node *node, size_t depth)
 {
-    /* print node*/
+    if (!node) {
+        printf("debug_print_string called on a NULL node\n");
+        return;
+    }
+    /* node can either be a internal (table) node or a leaf (value) node */
     if (!is_value(node->as.kv.value)) {
-        printf("%*s +- (%lu) @%p: %s", (int)depth * 2, "", ix, node, "[ ");
+        /* this is an internal/table node */
+        int n = get_popcount(node->as.table.index);
+        printf("%*s \\- [ ix=%2lu sz=%2d p=%p: ", (int)depth * 2, "", ix, n, (void *) node);
         for (size_t i = 0; i < 32; ++i) {
             if (node->as.table.index & (1 << i)) {
-                printf("%2lu(%i) ", i, get_pos(i, node->as.table.index));
+                printf("%2lu(%2i) ", i, get_pos(i, node->as.table.index));
             }
         }
-        printf("%s", "]\n");
-        /* print table */
-        int n = get_popcount(node->as.table.index);
+        printf("\n");
+        /* recursively descent into subtables */
         for (int i = 0; i < n; ++i) {
             debug_print_string(i, &node->as.table.ptr[i], depth + 1);
         }
     } else {
-        /* print value */
-        printf("%*s +- (%lu) @%p: (%s, %i)\n", (int)depth * 2, "", ix, node,
+        /* this is a leaf/value node */
+        printf("%*s \\_ (%2lu) @%p: (%s -> %d)\n", (int)depth * 2, "", ix, (void *) node,
                (char *)node->as.kv.key, *(int *)untagged(node->as.kv.value));
     }
 }
@@ -416,7 +421,7 @@ MU_TEST_SUITE(test_setget_large_scale)
                     &hamt_allocator_default);
     for (size_t i = 0; i < n_items; i++) {
         hamt_set(t, words[i], words[i]);
-        MU_ASSERT(hamt_get(t, words[i]), "Failed to get key we just pushed");
+        MU_ASSERT(hamt_get(t, words[i]) == words[i], "Failed to get key we just pushed");
     }
     for (size_t i = 0; i < n_items; i++) {
         MU_ASSERT(hamt_get(t, words[i]), "Failed to get key we pushed earlier");
@@ -738,7 +743,73 @@ MU_TEST_CASE(test_persistent_aspell_dict_en)
     return 0;
 }
 
-MU_TEST_CASE(test_persistent_add_remove_one)
+MU_TEST_CASE(test_table_extend)
+{
+    printf(". testing table_extend\n");
+    struct hamt *t = hamt_create(my_keyhash_string, my_keycmp_string,
+                                 &hamt_allocator_default);
+    MU_ASSERT(get_popcount(INDEX(t->root)) == 0,
+              "root should have zero descendants");
+    /*
+    printf("-0--\n");
+    debug_print_string(0, t->root, 0);
+    printf("-0--\n");
+    */
+    struct hamt_node *n = table_extend(t, t->root, 0, 0, 0);
+    MU_ASSERT(get_popcount(INDEX(n)) == 1, "size did not increase by 1");
+    MU_ASSERT(n == t->root, "anchor should not change");
+    /*
+    printf("-1--\n");
+    debug_print_string(0, t->root, 0);
+    printf("-1--\n");
+    */
+    n = table_shrink(t, t->root, 1, 0, 0);
+    MU_ASSERT(get_popcount(INDEX(n)) == 0, "size did not decrease by 1");
+    MU_ASSERT(n == t->root, "anchor should not change");
+    /*
+    printf("-2--\n");
+    debug_print_string(0, t->root, 0);
+    printf("-2--\n");
+    */
+    return 0;
+}
+
+MU_TEST_CASE(test_setget_zero)
+{
+    printf(". testing setget for a size 0 tree\n");
+
+    /* create a standard HAMT with string keys */
+    struct hamt *t;
+    t = hamt_create(my_keyhash_string, my_keycmp_string,
+                    &hamt_allocator_default);
+    /*
+    printf("-0--\n");
+    debug_print_string(0, t->root, 0);
+    printf("-0--\n");
+    */
+
+    /* add a single key */
+    char key[] = "the_key";
+    char value[] = "the_value";
+    const char *val = hamt_set(t, key, value);
+    MU_ASSERT(hamt_size(t) == 1, "wrong size after set");
+    MU_ASSERT(val == value, "value should point to the original value");
+    /* make sure we can find it */
+    val = hamt_get(t, key);
+    MU_ASSERT(val != NULL, "key should be present");
+    MU_ASSERT(val == value, "found value should point to the original value");
+    /* delete it */
+    val = hamt_remove(t, key);
+    MU_ASSERT(hamt_size(t) == 0, "wrong size after remove");
+    MU_ASSERT(val != NULL, "key should be present");
+    MU_ASSERT(val == value, "remove return value should point to the original value");
+    /* make sure it's gone */
+    val = hamt_get(t, key);
+    MU_ASSERT(val == NULL, "key should not be present anymore");
+
+    return 0;
+}
+MU_TEST_CASE(test_persistent_setget_one)
 {
     printf(". testing add/remove of a single element w/ structural sharing\n");
 
@@ -746,25 +817,22 @@ MU_TEST_CASE(test_persistent_add_remove_one)
     const struct hamt *t;
     t = hamt_create(my_keyhash_string, my_keycmp_string,
                     &hamt_allocator_default);
-    /* add a single key and make sure it gets added */
-    char *word = "the_key";
-    t = hamt_pset(t, word, word);
-    debug_print_string(0, t->root, 0);
-    MU_ASSERT(hamt_get(t, word) != NULL, "key should be present");
-
-    /* remove the key and make sure (1) it is gone from the new
-     * copy returned by hamt_premove(); and (2) it is still present in
-     * the original tree.
-     */
+    /* add a single key */
+    char key[] = "the_key";
+    char value[] = "the_value";
+    t = hamt_pset(t, key, value);
+    MU_ASSERT(hamt_size(t) == 1, "wrong size after set");
+    /* make sure we can find it */
+    char *val = (char *) hamt_get(t, key);
+    MU_ASSERT(val != NULL, "key should be present");
+    MU_ASSERT(val == value, "value should point to the original value");
+    /* remove it and make sure (1) it's gone from the new copy and
+     * still present in the old */ 
     const struct hamt *s;
-    s = hamt_premove(t, word);
-    printf("t:\n");
-    // debug_print_string(0, t->root, 0);
-    MU_ASSERT(hamt_get(t, word) != NULL,
-              "key should not have been removed from original trie");
-    printf("s:\n");
-    // debug_print_string(0, s->root, 0);
-    MU_ASSERT(hamt_get(s, word) == NULL,
+    s = hamt_premove(t, key);
+    MU_ASSERT(hamt_get(t, key) != NULL,
+              "key should still be present original trie");
+    MU_ASSERT(hamt_get(s, key) == NULL,
               "key should have been removed from copy");
     /*
      * There is no way to cleanly free the structurally shared
@@ -921,7 +989,6 @@ int mu_tests_run = 0;
 
 MU_TEST_SUITE(test_suite)
 {
-    
     MU_RUN_TEST(test_aspell_dict_en);
     MU_RUN_TEST(test_popcount);
     MU_RUN_TEST(test_compact_index);
@@ -930,6 +997,7 @@ MU_TEST_SUITE(test_suite)
     MU_RUN_TEST(test_set_with_collisions);
     MU_RUN_TEST(test_set_whole_enchilada_00);
     MU_RUN_TEST(test_set_stringkeys);
+    MU_RUN_TEST(test_setget_zero);
     MU_RUN_TEST(test_setget_large_scale);
     MU_RUN_TEST(test_shrink_table);
     MU_RUN_TEST(test_gather_table);
@@ -938,17 +1006,18 @@ MU_TEST_SUITE(test_suite)
     MU_RUN_TEST(test_size);
     MU_RUN_TEST(test_iterators);
     MU_RUN_TEST(test_iterators_1m);
-    MU_RUN_TEST(test_tree_depth);
     // persistent data structure tests
     MU_RUN_TEST(test_persistent_set);
     MU_RUN_TEST(test_persistent_aspell_dict_en);
-    
     MU_RUN_TEST(test_persistent_remove_aspell_dict_en);
-    MU_RUN_TEST(test_persistent_add_remove_one);
+    MU_RUN_TEST(test_table_extend);
+    MU_RUN_TEST(test_persistent_setget_one);
+    // tree statistics
+    MU_RUN_TEST(test_tree_depth);
     return 0;
 }
 
-int main()
+int main(void)
 {
     printf("---=[ Hash array mapped trie tests\n");
     char *result = test_suite();
