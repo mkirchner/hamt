@@ -28,6 +28,19 @@ struct hamt_allocator {
 
 extern struct hamt_allocator hamt_allocator_default;
 
+#if defined(WITH_TABLE_CACHE)
+/*
+ * Configuration options for the table cache; this allows the user to
+ * control cache behavior beyond default settings.
+ */
+struct hamt_cache_config {
+    ptrdiff_t initial_cache_sizes[32];  /* in # of tables */
+};
+
+extern struct hamt_cache_config hamt_cache_config_default;
+
+#endif
+
 struct hamt *hamt_create(hamt_key_hash_fn key_hash, hamt_cmp_fn key_cmp,
                          struct hamt_allocator *ator);
 void hamt_delete(struct hamt *trie);

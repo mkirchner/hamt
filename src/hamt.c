@@ -74,6 +74,12 @@ struct hamt_node {
 
 #if defined(WITH_TABLE_CACHE)
 struct table_allocator;
+struct hamt_cache_config hamt_cache_config_default = {
+    .initial_cache_sizes = { 
+        10000, 338900, 220200, 155800, 86700, 39500, 15000, 4900, 4900, 5200,
+        5000, 4900, 4700, 4600, 4600, 4600, 4200, 4600, 4700, 4300, 4600, 4800,
+        4500, 5100, 5100, 5300, 5500, 5900, 7000, 8000, 9900, 6900 }
+};
 #endif
 
 struct hamt {
@@ -271,8 +277,8 @@ table_allocator_alloc(struct table_allocator *pool,
             sizeof(struct table_allocator_chunk), backing_allocator->ctx);
         if (!chunk)
             goto err_no_cleanup;
-        /* create new chunk w/ same size as previous */
-        chunk->size = pool->chunk->size;
+        /* double size of new chunk compared to previous */
+        chunk->size = pool->chunk->size * 2;
         chunk->buf = (struct hamt_node *)backing_allocator->malloc(
             chunk->size * sizeof(struct hamt_node), backing_allocator->ctx);
         if (!chunk->buf)
@@ -311,9 +317,9 @@ void table_allocators_init(struct table_allocator *pools,
                            struct hamt_allocator *backing_allocator)
 {
     for (size_t i = 0; i < 32; ++i) {
-        // FIXME: sizes need to be parameters
-        table_allocator_create(&pools[i], 1024 * 1024 * 1024, i + 1,
-                               backing_allocator);
+        table_allocator_create(&pools[i],
+                               hamt_cache_config_default.initial_cache_sizes[i],
+                               i + 1, backing_allocator);
     }
 }
 
