@@ -484,7 +484,7 @@ MU_TEST_CASE(test_shrink_table)
                       "unexpected value in shrunk table");
         }
         table_free(t, TABLE(a0), 4);
-        mem_free(t->ator, a0);
+        mem_free(t->ator, a0, sizeof(struct hamt_node));
     }
     hamt_delete(t);
     return 0;

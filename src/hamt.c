@@ -29,11 +29,35 @@
 #define KEY(a) a->as.kv.key
 
 /* Memory management */
-#define mem_alloc(ator, size) (ator)->malloc(size)
-#define mem_free(ator, ptr) (ator)->free(ptr)
+#define mem_alloc(ator, size) (ator)->malloc(size, (ator)->ctx)
+#define mem_realloc(ator, ptr, size_old, size_new)                             \
+    (ator)->realloc(ptr, size_old, size_new, (ator)->ctx)
+#define mem_free(ator, ptr, size) (ator)->free(ptr, size, (ator)->ctx)
 
 /* Default allocator uses system malloc */
-struct hamt_allocator hamt_allocator_default = {malloc, realloc, free};
+static void *stdlib_malloc(const ptrdiff_t size, void *ctx)
+{
+    (void)ctx;
+    return malloc(size);
+}
+
+static void *stdlib_realloc(void *ptr, const ptrdiff_t old_size,
+                            const ptrdiff_t new_size, void *ctx)
+{
+    (void)ctx;
+    (void)old_size;
+    return realloc(ptr, new_size);
+}
+
+void stdlib_free(void *ptr, const ptrdiff_t size, void *ctx)
+{
+    (void)ctx;
+    (void)size;
+    free(ptr);
+}
+
+struct hamt_allocator hamt_allocator_default = {stdlib_malloc, stdlib_realloc,
+                                                stdlib_free};
 
 struct hamt_node {
     union {
@@ -182,13 +206,13 @@ int table_allocator_create(struct table_allocator *pool,
                                      .table_size = table_size,
                                      .fl = NULL};
     /* set up initial chunk */
-    pool->chunk =
-        backing_allocator->malloc(sizeof(struct table_allocator_chunk));
+    pool->chunk = backing_allocator->malloc(
+        sizeof(struct table_allocator_chunk), backing_allocator->ctx);
     if (!pool->chunk)
         goto err_no_cleanup;
     pool->chunk->size = initial_cache_size * table_size;
     pool->chunk->buf = (struct hamt_node *)backing_allocator->malloc(
-        pool->chunk->size * sizeof(struct hamt_node));
+        pool->chunk->size * sizeof(struct hamt_node), backing_allocator->ctx);
     if (!pool->chunk->buf)
         goto err_free_chunk;
     pool->chunk->next = NULL;
@@ -199,7 +223,8 @@ int table_allocator_create(struct table_allocator *pool,
 #endif
     return 0;
 err_free_chunk:
-    backing_allocator->free(pool->chunk);
+    backing_allocator->free(pool->chunk, sizeof(struct table_allocator_chunk),
+                            backing_allocator->ctx);
     pool->chunk = NULL;
 err_no_cleanup:
     pool->chunk_count = 0;
@@ -212,9 +237,13 @@ void table_allocator_delete(struct table_allocator *pool,
     struct table_allocator_chunk *current_chunk = pool->chunk, *next_chunk;
     /* free all buffers in all chunks */
     while (current_chunk) {
-        backing_allocator->free(current_chunk->buf);
+        backing_allocator->free(current_chunk->buf,
+                                current_chunk->size * sizeof(struct hamt_node),
+                                backing_allocator->ctx);
         next_chunk = current_chunk->next;
-        backing_allocator->free(current_chunk);
+        backing_allocator->free(current_chunk,
+                                sizeof(struct table_allocator_chunk),
+                                backing_allocator->ctx);
         current_chunk = next_chunk;
     }
 }
@@ -238,14 +267,14 @@ table_allocator_alloc(struct table_allocator *pool,
     /* freelist is empty, serve from chunk */
     if (pool->buf_ix == pool->chunk->size) {
         /* if chunk has no capacity left, create new one */
-        struct table_allocator_chunk *chunk =
-            backing_allocator->malloc(sizeof(struct table_allocator_chunk));
+        struct table_allocator_chunk *chunk = backing_allocator->malloc(
+            sizeof(struct table_allocator_chunk), backing_allocator->ctx);
         if (!chunk)
             goto err_no_cleanup;
         /* create new chunk w/ same size as previous */
         chunk->size = pool->chunk->size;
         chunk->buf = (struct hamt_node *)backing_allocator->malloc(
-            chunk->size * sizeof(struct hamt_node));
+            chunk->size * sizeof(struct hamt_node), backing_allocator->ctx);
         if (!chunk->buf)
             goto err_free_chunk;
         chunk->next = pool->chunk;
@@ -259,7 +288,8 @@ table_allocator_alloc(struct table_allocator *pool,
     pool->size++;
     return p;
 err_free_chunk:
-    backing_allocator->free(pool->chunk);
+    backing_allocator->free(pool->chunk, sizeof(struct table_allocator_chunk),
+                            backing_allocator->ctx);
     pool->chunk = NULL;
 err_no_cleanup:
     return NULL;
@@ -307,13 +337,13 @@ struct hamt_node *table_allocate(const struct hamt *h, size_t size)
 #endif
 }
 
-void table_free(struct hamt *h, struct hamt_node *ptr, size_t size)
+void table_free(struct hamt *h, struct hamt_node *ptr, size_t n_rows)
 {
-    if (ptr && size)
+    if (ptr && n_rows)
 #if defined(WITH_TABLE_CACHE)
-        table_allocator_free(&h->table_ator[size - 1], ptr);
+        table_allocator_free(&h->table_ator[n_rows - 1], ptr);
 #else
-        mem_free(h->ator, ptr);
+        mem_free(h->ator, ptr, n_rows * sizeof(struct hamt_node));
 #endif
 }
 
@@ -796,10 +826,10 @@ void hamt_delete(struct hamt *h)
     delete_recursive(h, h->root);
 #if defined(WITH_TABLE_CACHE)
     table_allocators_destroy(h->table_ator, h->ator);
-    mem_free(h->ator, h->table_ator);
+    mem_free(h->ator, h->table_ator, sizeof(struct table_allocator));
 #endif
-    mem_free(h->ator, h->root);
-    mem_free(h->ator, h);
+    mem_free(h->ator, h->root, sizeof(struct hamt_node));
+    mem_free(h->ator, h, sizeof(struct hamt));
 }
 
 size_t hamt_size(const struct hamt *trie) { return trie->size; }
@@ -880,9 +910,9 @@ void hamt_it_delete(struct hamt_iterator *it)
     while (p) {
         tmp = p;
         p = p->next;
-        mem_free(it->trie->ator, tmp);
+        mem_free(it->trie->ator, tmp, sizeof(struct hamt_iterator_item));
     }
-    mem_free(it->trie->ator, it);
+    mem_free(it->trie->ator, it, sizeof(struct hamt_iterator));
 }
 
 inline bool hamt_it_valid(struct hamt_iterator *it) { return it->cur != NULL; }
@@ -913,7 +943,7 @@ struct hamt_iterator *hamt_it_next(struct hamt_iterator *it)
         }
         /* remove table from stack when all rows have been dealt with */
         iterator_pop_item(it);
-        mem_free(it->trie->ator, p);
+        mem_free(it->trie->ator, p, sizeof(struct hamt_iterator_item));
     }
     if (it)
         it->cur = NULL;
