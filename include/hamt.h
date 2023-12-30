@@ -10,10 +10,20 @@ typedef uint32_t (*hamt_key_hash_fn)(const void *key, const size_t gen);
 
 struct hamt;
 
+/*
+ * A custom allocator interface. This is similar to the function
+ * pointer callback allocator interface exposed in e.g. libavl but
+ * additionally enables (1) a user-defined context pointer to allow
+ * for user state management; and (2) passing current and/or new size
+ * information to free() and realloc() functions for (optional) sized
+ * deallocation.
+ */
 struct hamt_allocator {
-    void *(*malloc)(const size_t size);
-    void *(*realloc)(void *chunk, const size_t size);
-    void (*free)(void *chunk);
+    void *(*malloc)(const ptrdiff_t size, void *ctx);
+    void *(*realloc)(void *ptr, const ptrdiff_t old_size,
+                     const ptrdiff_t new_size, void *ctx);
+    void (*free)(void *ptr, const ptrdiff_t size, void *ctx);
+    void *ctx;
 };
 
 extern struct hamt_allocator hamt_allocator_default;
