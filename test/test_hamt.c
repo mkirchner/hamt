@@ -800,10 +800,11 @@ MU_TEST_CASE(test_setget_zero)
     */
 
     /* add a single key */
-    char key[] = "the_key";
-    char value[] = "the_value";
+    char key[] __attribute__ ((aligned (8))) = "the_key";
+    char value[] __attribute__ ((aligned (8))) = "the_value";
     const char *val = hamt_set(t, key, value);
     MU_ASSERT(hamt_size(t) == 1, "wrong size after set");
+    MU_ASSERT(strcmp(val, value) == 0, "values are not the same");
     MU_ASSERT(val == value, "value should point to the original value");
     /* make sure we can find it */
     val = hamt_get(t, key);
