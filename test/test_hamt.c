@@ -831,8 +831,8 @@ MU_TEST_CASE(test_persistent_setget_one)
     t = hamt_create(my_keyhash_string, my_keycmp_string,
                     &hamt_allocator_default);
     /* add a single key */
-    char key[] = "the_key";
-    char value[] = "the_value";
+    char key[] __attribute__ ((aligned (8))) = "the_key";
+    char value[] __attribute__ ((aligned (8))) = "the_value";
     t = hamt_pset(t, key, value);
     MU_ASSERT(hamt_size(t) == 1, "wrong size after set");
     /* make sure we can find it */
