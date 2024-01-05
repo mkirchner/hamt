@@ -793,15 +793,15 @@ MU_TEST_CASE(test_setget_zero)
     struct hamt *t;
     t = hamt_create(my_keyhash_string, my_keycmp_string,
                     &hamt_allocator_default);
-    /*
-    printf("-0--\n");
-    debug_print_string(0, t->root, 0);
-    printf("-0--\n");
-    */
-
-    /* add a single key */
+    /* Add a single key.
+     *
+     * C does not provide alignment guarantees for static char arrays; advise
+     * the compiler to align at a 64 bit boundary to make sure that the value
+     * ponter we point to actually supports pointer tagging...
+     */
     char key[] __attribute__ ((aligned (8))) = "the_key";
     char value[] __attribute__ ((aligned (8))) = "the_value";
+
     const char *val = hamt_set(t, key, value);
     MU_ASSERT(hamt_size(t) == 1, "wrong size after set");
     MU_ASSERT(strcmp(val, value) == 0, "values are not the same");
