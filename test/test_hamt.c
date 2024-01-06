@@ -914,10 +914,9 @@ static void print_allocation_stats(struct hamt *t)
 {
     ptrdiff_t total_size = 0;
     ptrdiff_t total_allocated_items = 0;
-    struct hamt_table_cache_32 *cache = t->table_ator;
     for (size_t l = 0; l < 32; ++l) {
-        total_size += cache->pools[l].size;
-        total_allocated_items += cache->pools[l].size * l;
+        total_size += t->table_ator[l].size;
+        total_allocated_items += t->table_ator[l].size * l;
     }
     printf("    Alloc overhead ratio: %f\n",
            total_allocated_items / (float)t->size);
@@ -926,12 +925,12 @@ static void print_allocation_stats(struct hamt *t)
     printf("      ------- --------- -------- -------- --------- -------\n");
     for (size_t l = 0; l < 32; ++l) {
         printf("      %6lu  %8lu  %5.2f%%  %7lu  %9lu  %4.2f%% \n", l + 1,
-               cache->pools[l].size,
-               100 * cache->pools[l].size / (float)total_size,
-               cache->pools[l].stats.alloc_count,
-               cache->pools[l].stats.free_count,
-               100 * (1.0 - (cache->pools[l].stats.free_count /
-                             (float)cache->pools[l].stats.alloc_count)));
+               t->table_ator[l].size,
+               100 * t->table_ator[l].size / (float)total_size,
+               t->table_ator[l].stats.alloc_count,
+               t->table_ator[l].stats.free_count,
+               100 * (1.0 - (t->table_ator[l].stats.free_count /
+                             (float)t->table_ator[l].stats.alloc_count)));
     }
 }
 #endif
