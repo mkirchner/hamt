@@ -4,6 +4,7 @@ INC_DIRS := $(shell find $(SRC_DIRS) -type d)
 INC_FLAGS := $(addprefix -I,$(INC_DIRS))
 
 LIB_SRCS := \
+	src/cache.c \
 	src/hamt.c \
 	src/murmur3.c \
 	src/uh.c
