@@ -1092,15 +1092,13 @@ MU_TEST_SUITE(test_suite)
     MU_RUN_TEST(test_create_delete);
     MU_RUN_TEST(test_size);
     MU_RUN_TEST(test_iterators);
-    //MU_RUN_TEST(test_iterators_1m);
+    MU_RUN_TEST(test_iterators_1m);
     // persistent data structure tests
-    /*
     MU_RUN_TEST(test_persistent_set);
     MU_RUN_TEST(test_persistent_aspell_dict_en);
     MU_RUN_TEST(test_persistent_remove_aspell_dict_en);
     MU_RUN_TEST(test_table_extend);
     MU_RUN_TEST(test_persistent_setget_one);
-    */
     // tree statistics
     MU_RUN_TEST(test_tree_depth);
     return 0;
