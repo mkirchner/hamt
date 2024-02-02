@@ -18,33 +18,39 @@ TEST_HAMT_SRCS := \
 	test/test_hamt.c \
 	test/utils.c \
 	test/words.c
-
 TEST_HAMT_OBJS := $(TEST_HAMT_SRCS:%=$(BUILD_DIR)/%.o)
 TEST_HAMT_DEPS := $(TEST_HAMT_OBJS:.o=.d)
 
 TEST_MURMUR_SRCS := test/test_murmur.c
-
 TEST_MURMUR_OBJS := $(TEST_MURMUR_SRCS:%=$(BUILD_DIR)/%.o)
 TEST_MURMUR_DEPS := $(TEST_MURMUR_OBJS:.o=.d)
 
-CPPFLAGS ?= $(INC_FLAGS) -std=c11 -Wall -pedantic -MMD -MP -O0  -g -DWITH_TABLE_CACHE -DWITH_TABLE_CACHE_STATS 
+TEST_CACHE_SRCS := test/test_cache.c src/hamt.c
+TEST_CACHE_OBJS := $(TEST_CACHE_SRCS:%=$(BUILD_DIR)/%.o)
+TEST_CACHE_DEPS := $(TEST_CACHE_OBJS:.o=.d)
+
+CPPFLAGS ?= $(INC_FLAGS) -std=c11 -Wall -pedantic -MMD -MP -O0  -g -DWITH_TABLE_CACHE -DWITH_TABLE_CACHE_STATS
 
 lib: $(BUILD_DIR)/src/libhamt.dylib
 
 $(BUILD_DIR)/src/libhamt.dylib: $(LIB_OBJS)
 	$(CC) $(LIB_OBJS) -dynamiclib -o $@
 
-build_test: $(BUILD_DIR)/test/test_hamt $(BUILD_DIR)/test/test_murmur
+build_test: $(BUILD_DIR)/test/test_hamt $(BUILD_DIR)/test/test_murmur $(BUILD_DIR)/test/test_cache
 
 test: build_test
 	$(BUILD_DIR)/test/test_murmur
 	$(BUILD_DIR)/test/test_hamt
+	$(BUILD_DIR)/test/test_cache
 
 $(BUILD_DIR)/test/test_hamt: $(TEST_HAMT_OBJS)
 	$(CC) $(TEST_HAMT_OBJS) -o $@ $(LDFLAGS)
 
 $(BUILD_DIR)/test/test_murmur: $(TEST_MURMUR_OBJS)
 	$(CC) $(TEST_MURMUR_OBJS) -o $@ $(LDFLAGS)
+
+$(BUILD_DIR)/test/test_cache: $(TEST_CACHE_OBJS)
+	$(CC) $(TEST_CACHE_OBJS) -o $@ $(LDFLAGS)
 
 # c source
 $(BUILD_DIR)/%.c.o: %.c

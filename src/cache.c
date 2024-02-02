@@ -1,7 +1,13 @@
 #include "cache.h"
 #include "internal_types.h"
 
+/* debugging and assertions */
 #include <assert.h>
+#if !defined(NDEBUG)
+#include <string.h>  /* for memset */
+#define TABLE_CACHE_DEBUG_CHUNK_INITIALIZER 0x41
+#define TABLE_CACHE_DEBUG_FREELIST_INITIALIZER 0x42
+#endif
 
 ptrdiff_t hamt_table_cache_config_default_bucket_count = 32;
 ptrdiff_t hamt_table_cache_default_bucket_sizes[32] = {
@@ -22,7 +28,7 @@ struct table_allocator_freelist {
 
 struct table_allocator_chunk {
     struct table_allocator_chunk *next; /* pointer to next chunk */
-    ptrdiff_t size;                     /* buffer size in count */
+    ptrdiff_t size;                     /* buffer size in bytes */
     struct hamt_node *buf;              /* pointer to the actual buffer */
 };
 
@@ -111,6 +117,10 @@ table_allocator_alloc(struct table_allocator *pool,
     if (pool->fl) {
         struct table_allocator_freelist *f = pool->fl;
         pool->fl = pool->fl->next;
+# if !defined(NDEBUG)
+        /* debug: clear the pointer info with known value */
+        memset(f, TABLE_CACHE_DEBUG_FREELIST_INITIALIZER, sizeof(struct hamt_node*));
+# endif
         return (struct hamt_node *)f;
     }
     /* freelist is empty, serve from chunk */
@@ -126,6 +136,11 @@ table_allocator_alloc(struct table_allocator *pool,
             chunk->size * sizeof(struct hamt_node), backing_allocator->ctx);
         if (!chunk->buf)
             goto err_free_chunk;
+#if !defined(NDEBUG)
+        /* debug: initialize the chunk to known values */
+        memset(chunk->buf, TABLE_CACHE_DEBUG_CHUNK_INITIALIZER,
+               chunk->size * sizeof(struct hamt_node));
+#endif
         chunk->next = pool->chunk;
         pool->chunk = chunk;
         pool->buf_ix = 0;
@@ -148,6 +163,11 @@ void table_allocator_free(struct table_allocator *pool, void *p)
 {
 #if defined(WITH_TABLE_CACHE_STATS)
     pool->stats.free_count++;
+#endif
+#ifndef NDEBUG
+    /* debug: re-initialize table content to known initializer */
+    memset(p, TABLE_CACHE_DEBUG_FREELIST_INITIALIZER,
+           pool->table_size * sizeof(struct hamt_node));
 #endif
     /* insert returned memory at the front of the freelist */
     struct table_allocator_freelist *head =
@@ -193,5 +213,5 @@ void hamt_table_cache_free(struct hamt_table_cache *cache, size_t n, void *p)
 {
     assert(n > 0 && "Request for zero-size free");
     assert(n < 33 && "Request for >32 rows free");
-    table_allocator_free(&cache->pools[n], p);
+    table_allocator_free(&cache->pools[n-1], p);
 }
