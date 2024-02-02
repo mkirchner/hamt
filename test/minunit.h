@@ -1,6 +1,8 @@
 #ifndef MINUNIT_H
 #define MINUNIT_H
 
+#include <assert.h>
+
 /*
  * Based on: http://www.jera.com/techinfo/jtns/jtn002.html
  */
@@ -8,7 +10,7 @@
 #define MU_ASSERT(test, message)                                               \
     do {                                                                       \
         if (!(test))                                                           \
-            return message;                                                    \
+            assert(0 && message); \
     } while (0)
 #define MU_RUN_TEST(test)                                                      \
     do {                                                                       \
