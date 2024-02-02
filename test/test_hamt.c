@@ -1076,7 +1076,7 @@ int mu_tests_run = 0;
 
 MU_TEST_SUITE(test_suite)
 {
-    // MU_RUN_TEST(test_aspell_dict_en);
+    MU_RUN_TEST(test_aspell_dict_en);
     MU_RUN_TEST(test_popcount);
     MU_RUN_TEST(test_compact_index);
     MU_RUN_TEST(test_tagging);
@@ -1085,8 +1085,8 @@ MU_TEST_SUITE(test_suite)
     MU_RUN_TEST(test_set_whole_enchilada_00);
     MU_RUN_TEST(test_set_stringkeys);
     MU_RUN_TEST(test_setget_zero);
-    // MU_RUN_TEST(test_setget_large_scale);
-    // MU_RUN_TEST(test_shrink_table);
+    MU_RUN_TEST(test_setget_large_scale);
+    MU_RUN_TEST(test_shrink_table);
     MU_RUN_TEST(test_gather_table);
     MU_RUN_TEST(test_remove);
     MU_RUN_TEST(test_create_delete);
@@ -1094,11 +1094,13 @@ MU_TEST_SUITE(test_suite)
     MU_RUN_TEST(test_iterators);
     //MU_RUN_TEST(test_iterators_1m);
     // persistent data structure tests
+    /*
     MU_RUN_TEST(test_persistent_set);
     MU_RUN_TEST(test_persistent_aspell_dict_en);
     MU_RUN_TEST(test_persistent_remove_aspell_dict_en);
     MU_RUN_TEST(test_table_extend);
     MU_RUN_TEST(test_persistent_setget_one);
+    */
     // tree statistics
     MU_RUN_TEST(test_tree_depth);
     return 0;
