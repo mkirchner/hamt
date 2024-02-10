@@ -28,10 +28,10 @@ $ git clone git@github.com:mkirchner/hamt.git
 $ cd hamt
 $ make
 $ make test
+$ make runtest
 ```
-
-In order to use `libhamt` in your own projects, copy `include/hamt.h` and
-`src/hamt.c` in your own source tree and build from there.
+In order to use `libhamt` in your own projects, copy the required sources to
+your own source tree.
 
 ### Benchmarks
 
