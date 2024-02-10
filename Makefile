@@ -26,12 +26,12 @@ else ifeq ($(ARCH),Linux)
     LIB := libhamt.so
     LDFLAGS = -shared
 endif
+
 #
 # Compiler flags
 #
 CC     := gcc
 CFLAGS := -Wall $(INCFLAGS)  # -Werror -Wextra
-
 
 #
 # Debug build settings
@@ -54,9 +54,7 @@ RELCFLAGS = -O3 -DNDEBUG $(CFGFLAGS)
 RELLDFLAGS := $(LDFLAGS)
 
 #
-# Tests build settings
-#
-# Add the test executables to the debug environment
+# Test build settings
 #
 TESTDIR = build/debug
 TESTSRCS := src/uh.c \
@@ -69,8 +67,8 @@ TESTEXE := $(addprefix $(TESTDIR)/test/,test_hamt)
 
 .PHONY: all clean debug prep release remake
 
-# Default build
-all: prep release
+# Default build to debug
+all: prep debug
 
 #
 # Debug rules
