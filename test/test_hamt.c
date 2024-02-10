@@ -6,13 +6,25 @@
 #include <stdlib.h>
 #include <string.h>
 
-#include "murmur3.h"
 #include "uh.h"
 #include "utils.h"
 #include "words.h"
 
-#include "../src/hamt.c"
 #include "../src/cache.c"
+#include "../src/hamt.c"
+#include "../src/murmur3.c"
+
+void **shuffle_ptr_array(ptrdiff_t size, void *array[size])
+{
+    void *tmp;
+    for (size_t i = size - 1; i > 0; --i) {
+        size_t j = drand48() * (i + 1);
+        tmp = array[i];
+        array[i] = array[j];
+        array[j] = tmp;
+    }
+    return array;
+}
 
 /*
  * Prints `node` and all its descendants in the HAMT.
@@ -55,35 +67,38 @@ static void debug_print_string(size_t ix, const struct hamt_node *node,
 /* helper function to create a HAMT config; only takes subset of key
  * parameters, uses defaults for the the rest */
 struct hamt_config *create_config(struct hamt_allocator *allocator,
-                         hamt_key_hash_fn key_hash_fn,
-                         hamt_key_cmp_fn key_cmp_fn)
+                                  hamt_key_hash_fn key_hash_fn,
+                                  hamt_key_cmp_fn key_cmp_fn)
 {
     struct hamt_config *cfg = NULL;
-#if defined (WITH_TABLE_CACHE)
-    struct hamt_table_cache_config *tc_cfg = allocator->malloc(sizeof *tc_cfg, allocator->ctx);
-    if (!tc_cfg) goto exit;
-    *tc_cfg = (struct hamt_table_cache_config) {
+#if defined(WITH_TABLE_CACHE)
+    struct hamt_table_cache_config *tc_cfg =
+        allocator->malloc(sizeof *tc_cfg, allocator->ctx);
+    if (!tc_cfg)
+        goto exit;
+    *tc_cfg = (struct hamt_table_cache_config){
         .bucket_count = hamt_table_cache_config_default_bucket_count,
         .initial_bucket_sizes = hamt_table_cache_default_bucket_sizes,
-        .backing_allocator = allocator
-    };
+        .backing_allocator = allocator};
     struct hamt_table_cache *cache = hamt_table_cache_create(tc_cfg);
-    if (!cache) goto cleanup_cache_config;
+    if (!cache)
+        goto cleanup_cache_config;
 #endif
     cfg = allocator->malloc(sizeof *cfg, allocator->ctx);
     if (cfg) {
-        *cfg = (struct hamt_config) {
+        *cfg = (struct hamt_config)
+        {
             .ator = allocator,
-#if defined (WITH_TABLE_CACHE)
+#if defined(WITH_TABLE_CACHE)
             .cache = cache,
 #endif
-            .key_cmp_fn = key_cmp_fn,
-            .key_hash_fn = key_hash_fn
+            .key_cmp_fn = key_cmp_fn, .key_hash_fn = key_hash_fn
         };
     }
-#if defined (WITH_TABLE_CACHE)
-    else goto cleanup_cache;
-    goto exit; 
+#if defined(WITH_TABLE_CACHE)
+    else
+        goto cleanup_cache;
+    goto exit;
 cleanup_cache:
     allocator->free(cache, sizeof *cache, allocator->ctx);
 cleanup_cache_config:
@@ -96,13 +111,259 @@ exit:
 void delete_config(struct hamt_config *cfg)
 {
     if (cfg) {
-#if defined (WITH_TABLE_CACHE)
-        if(cfg->cache) {
+#if defined(WITH_TABLE_CACHE)
+        if (cfg->cache) {
             free(cfg->cache);
         }
 #endif
         free(cfg);
     }
+}
+
+static int my_strncmp_1(const void *lhs, const void *rhs)
+{
+    return strncmp((const char *)lhs, (const char *)rhs, 1);
+}
+
+static uint32_t my_hash_1(const void *key, const size_t _)
+{
+    /* ignore gen here */
+    return murmur3_32((uint8_t *)key, 1, 0);
+}
+
+static void print_keys(int32_t hash)
+{
+    for (size_t i = 0; i < 6; ++i) {
+        uint32_t key = (hash >> (5 * i)) & 0x1f;
+        printf("%2d ", key);
+    }
+}
+static int my_keycmp_string(const void *lhs, const void *rhs)
+{
+    /* expects lhs and rhs to be pointers to 0-terminated strings */
+    size_t nl = strlen((const char *)lhs);
+    size_t nr = strlen((const char *)rhs);
+    return strncmp((const char *)lhs, (const char *)rhs, nl > nr ? nl : nr);
+}
+
+static uint32_t my_keyhash_string(const void *key, const size_t gen)
+{
+    uint32_t hash = murmur3_32((uint8_t *)key, strlen((const char *)key), gen);
+    return hash;
+}
+
+static uint32_t my_keyhash_universal(const void *key, const size_t gen)
+{
+    return sedgewick_universal_hash((const char *)key, 0x8fffffff - (gen << 8));
+}
+
+#ifdef WITH_TABLE_CACHE
+#ifdef WITH_TABLE_CACHE_STATS
+static void print_allocation_stats(struct hamt *t)
+{
+    ptrdiff_t total_size = 0;
+    ptrdiff_t total_allocated_items = 0;
+    for (size_t l = 0; l < 32; ++l) {
+        total_size += t->cache->pools[l].size;
+        total_allocated_items += t->cache->pools[l].size * l;
+    }
+    printf("    Alloc overhead ratio: %f\n",
+           total_allocated_items / (float)t->size);
+    printf("    Pool allocator statistics:\n");
+    printf("       tsize    psize    psize%%   allocs    frees    fill%%  \n");
+    printf("      ------- --------- -------- -------- --------- -------\n");
+    for (size_t l = 0; l < 32; ++l) {
+        printf("      %6lu  %8lu  %5.2f%%  %7lu  %9lu  %4.2f%% \n", l + 1,
+               t->cache->pools[l].size,
+               100 * t->cache->pools[l].size / (float)total_size,
+               t->cache->pools[l].stats.alloc_count,
+               t->cache->pools[l].stats.free_count,
+               100 * (1.0 - (t->cache->pools[l].stats.free_count /
+                             (float)t->cache->pools[l].stats.alloc_count)));
+    }
+}
+#endif
+#endif
+MU_TEST_CASE(test_murmur3_x86_32)
+{
+    printf(". testing Murmur3 (x86, 32bit)\n");
+    /* test vectors from
+     * https://stackoverflow.com/questions/14747343/murmurhash3-test-vectors */
+    struct {
+        char *key;
+        size_t len;
+        uint32_t seed;
+        uint32_t expected;
+    } test_cases[7] = {
+        {NULL, 0, 0, 0},
+        {NULL, 0, 1, 0x514e28b7},
+        {NULL, 0, 0xffffffff, 0x81f16f39},
+        {"\x00\x00\x00\x00", 4, 0, 0x2362f9de},
+        {"\xff\xff\xff\xff", 4, 0, 0x76293b50},
+        {"\x21\x43\x65\x87", 4, 0, 0xf55b516b},
+        {"\x21\x43\x65\x87", 4, 0x5082edee, 0x2362f9de},
+    };
+
+    for (size_t i = 0; i < 7; ++i) {
+        uint32_t hash = murmur3_32((uint8_t *)test_cases[i].key,
+                                   test_cases[i].len, test_cases[i].seed);
+        MU_ASSERT(hash == test_cases[i].expected, "Wrong hash");
+    }
+    return 0;
+}
+MU_TEST_CASE(cache_test_create_delete)
+{
+    printf("Testing cache create/delete...\n");
+    struct hamt_table_cache_config cfg = {
+        .backing_allocator = &hamt_allocator_default,
+        .bucket_count = hamt_table_cache_config_default_bucket_count,
+        .initial_bucket_sizes = hamt_table_cache_default_bucket_sizes};
+    struct hamt_table_cache *cache = hamt_table_cache_create(&cfg);
+
+    MU_ASSERT(cache->backing_allocator == &hamt_allocator_default,
+              "backing allocator should point to default allocator");
+    for (size_t i = 0; i < 32; ++i) {
+        MU_ASSERT(cache->pools[i].size == 0,
+                  "initial number of allocations should be zero");
+        MU_ASSERT(cache->pools[i].table_size == i + 1, "wrong table size");
+        MU_ASSERT(cache->pools[i].buf_ix == 0,
+                  "high water mark should start at zero");
+        MU_ASSERT(cache->pools[i].chunk != NULL, "chunk should not be NULL");
+        MU_ASSERT(cache->pools[i].chunk_count == 1, "expect a single chunk");
+        MU_ASSERT(cache->pools[i].chunk->next == NULL,
+                  "expect a single chunk at init");
+        MU_ASSERT(cache->pools[i].chunk->size ==
+                      (i + 1) * hamt_table_cache_default_bucket_sizes[i],
+                  "initial chunk size should be table size times default "
+                  "bucket size");
+    }
+    hamt_table_cache_delete(cache);
+    return 0;
+}
+
+MU_TEST_CASE(cache_test_allocator_stride)
+{
+    printf("Testing allocator stride...\n");
+    struct hamt_table_cache_config cfg = {
+        .backing_allocator = &hamt_allocator_default,
+        .bucket_count = hamt_table_cache_config_default_bucket_count,
+        .initial_bucket_sizes = hamt_table_cache_default_bucket_sizes};
+    struct hamt_table_cache *cache = hamt_table_cache_create(&cfg);
+
+    for (size_t i = 0; i < 32; ++i) {
+        ptrdiff_t expected_stride = (i + 1) * sizeof(struct hamt_node);
+        char *p = (char *)hamt_table_cache_alloc(cache, i + 1);
+        ptrdiff_t tables_per_chunk = cache->pools[i].chunk->size / (i + 1);
+        /*
+        printf("  table size %lu, expected stride %lu, testing %lu tables\n",
+                i+1, expected_stride, tables_per_chunk);
+        */
+        for (size_t j = 0; j < tables_per_chunk - 1; ++j) {
+            char *q = (char *)hamt_table_cache_alloc(cache, i + 1);
+            MU_ASSERT(q - p == expected_stride, "wrong stride");
+            p = q;
+        }
+    }
+    hamt_table_cache_delete(cache);
+    return 0;
+}
+
+MU_TEST_CASE(cache_test_freelist_addressing)
+{
+    /* Test addressing, strides, address calculations */
+    printf("Testing freelist addressing...\n");
+
+    /* set all cache chunks to the same number of items */
+    ptrdiff_t bucket_sizes[32] = {32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32,
+                                  32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32,
+                                  32, 32, 32, 32, 32, 32, 32, 32, 32, 32};
+    struct hamt_table_cache_config cfg = {
+        .backing_allocator = &hamt_allocator_default,
+        .bucket_count = hamt_table_cache_config_default_bucket_count,
+        .initial_bucket_sizes = bucket_sizes};
+
+    /* note: 1-based loops */
+    for (size_t n_rows = 1; n_rows < 33; ++n_rows) {
+        for (size_t n_chunks = 1; n_chunks < 5; ++n_chunks) {
+            /* create a new pool every time for isolated testing */
+            struct hamt_table_cache *cache = hamt_table_cache_create(&cfg);
+
+            /* Create an array to hold the pointers to all entries.
+             *
+             * Chunk sizes double as new chunks get allocated, therefore
+             * the number of entries in chunk k is
+             *     n_k = 2^(k-1) * chunk_size
+             * where k is 1-based. The total number of pointers is the
+             * sum of n_k for k in 1..4 */
+
+            ptrdiff_t n_pointers = 0;
+            for (ptrdiff_t k = 0; k < n_chunks; ++k) {
+                n_pointers += (1 << k) * bucket_sizes[n_rows - 1];
+            }
+            struct hamt_node **ptrs;
+            ptrs = malloc(n_pointers * sizeof(struct hamt_node *));
+
+            /* deplete the cache and trigger resize until hitting the correct
+             * capacity */
+            for (size_t pi = 0; pi < n_pointers; ++pi) {
+                ptrs[pi] = hamt_table_cache_alloc(cache, n_rows);
+            }
+
+            /* make sure we created the correct number of chunks */
+            struct table_allocator *ator = &cache->pools[n_rows - 1];
+            MU_ASSERT(ator->chunk_count == n_chunks,
+                      "Invalid number of chunks");
+
+            /* make sure the number of pointers corresponds to the cache size */
+            MU_ASSERT(ator->size == n_pointers,
+                      "Expeceted and actual # items differ");
+
+            /* and also to the total capacity */
+            ptrdiff_t n_slots = 0;
+            struct table_allocator_chunk *chunk = ator->chunk;
+            for (size_t c = 0; c < ator->chunk_count; ++c) {
+                n_slots += chunk->size / n_rows;
+                chunk = chunk->next;
+            }
+            MU_ASSERT(n_slots == n_pointers, "Failed to exhaust cache");
+
+            /* no dangling chunks! */
+            MU_ASSERT(chunk == NULL, "More than chunk_count chunks in pool");
+
+            /* shuffle the pointer array */
+            shuffle_ptr_array(n_pointers, (void **)ptrs);
+
+            /* return all pointers to the freelist in shuffled order */
+            for (size_t pi = 0; pi < n_pointers; ++pi) {
+                hamt_table_cache_free(cache, n_rows, ptrs[pi]);
+            }
+
+            /* walk the freelist (don't just use the pointer array, test
+             * the freelist's ability to properly chain things instead)
+             * and set every entry to { 0x42 } */
+            struct table_allocator_freelist *fl = ator->fl;
+            while (fl) {
+                struct table_allocator_freelist *next = fl->next;
+                memset(fl, 0x42, n_rows * sizeof(struct hamt_node));
+                fl = next;
+            }
+
+            /* iterate over all chunks and assert that every byte
+             * is set to 0x42 */
+            chunk = ator->chunk;
+            for (size_t c = 0; c < ator->chunk_count; ++c) {
+                for (size_t b = 0; b < chunk->size * sizeof(struct hamt_node);
+                     ++b) {
+                    /* byte-wise addressing hence char* */
+                    MU_ASSERT(((char *)chunk->buf)[b] == 0x42,
+                              "Unexpected value in chunk");
+                }
+            }
+            /* destroy the pool */
+            hamt_table_cache_delete(cache);
+        }
+    }
+    return 0;
 }
 
 MU_TEST_CASE(test_popcount)
@@ -153,25 +414,6 @@ MU_TEST_CASE(test_tagging)
     p = untagged(p);
     MU_ASSERT(!is_value(p), "Untagging must return a raw pointer");
     return 0;
-}
-
-static int my_strncmp_1(const void *lhs, const void *rhs)
-{
-    return strncmp((const char *)lhs, (const char *)rhs, 1);
-}
-
-static uint32_t my_hash_1(const void *key, const size_t _)
-{
-    /* ignore gen here */
-    return murmur3_32((uint8_t *)key, 1, 0);
-}
-
-static void print_keys(int32_t hash)
-{
-    for (size_t i = 0; i < 6; ++i) {
-        uint32_t key = (hash >> (5 * i)) & 0x1f;
-        printf("%2d ", key);
-    }
 }
 
 MU_TEST_CASE(test_search)
@@ -294,7 +536,8 @@ MU_TEST_CASE(test_search)
 MU_TEST_CASE(test_set_with_collisions)
 {
     printf(". testing set/insert w/ forced key collision\n");
-    struct hamt_config *cfg = create_config(&hamt_allocator_default, my_hash_1, my_strncmp_1);
+    struct hamt_config *cfg =
+        create_config(&hamt_allocator_default, my_hash_1, my_strncmp_1);
     struct hamt *t = hamt_create(cfg);
 
     /* example 1: no hash collisions */
@@ -338,7 +581,8 @@ MU_TEST_CASE(test_set_whole_enchilada_00)
         int value;
     } data[5] = {{'0', 0}, {'2', 2}, {'4', 4}, {'7', 7}, {'8', 8}};
 
-    struct hamt_config *cfg = create_config(&hamt_allocator_default, my_hash_1, my_strncmp_1);
+    struct hamt_config *cfg =
+        create_config(&hamt_allocator_default, my_hash_1, my_strncmp_1);
     struct hamt *t = hamt_create(cfg);
     for (size_t i = 0; i < 5; ++i) {
         set(t, t->root, t->key_hash, t->key_cmp, &data[i].key, &data[i].value);
@@ -364,20 +608,6 @@ MU_TEST_CASE(test_set_whole_enchilada_00)
     return 0;
 }
 
-static int my_keycmp_string(const void *lhs, const void *rhs)
-{
-    /* expects lhs and rhs to be pointers to 0-terminated strings */
-    size_t nl = strlen((const char *)lhs);
-    size_t nr = strlen((const char *)rhs);
-    return strncmp((const char *)lhs, (const char *)rhs, nl > nr ? nl : nr);
-}
-
-static uint32_t my_keyhash_string(const void *key, const size_t gen)
-{
-    uint32_t hash = murmur3_32((uint8_t *)key, strlen((const char *)key), gen);
-    return hash;
-}
-
 MU_TEST_CASE(test_set_stringkeys)
 {
     printf(". testing set/insert w/ string keys\n");
@@ -389,7 +619,8 @@ MU_TEST_CASE(test_set_stringkeys)
     } data[6] = {{"humpty", 1}, {"dumpty", 2}, {"sat", 3},
                  {"on", 4},     {"the", 5},    {"wall", 6}};
 
-    struct hamt_config *cfg = create_config(&hamt_allocator_default, my_keyhash_string, my_keycmp_string);
+    struct hamt_config *cfg = create_config(
+        &hamt_allocator_default, my_keyhash_string, my_keycmp_string);
     struct hamt *t = hamt_create(cfg);
     for (size_t i = 0; i < 6; ++i) {
         // printf("setting (%s, %d)\n", data[i].key, data[i].value);
@@ -428,7 +659,8 @@ MU_TEST_CASE(test_aspell_dict_en)
     struct hamt *t;
 
     words_load(&words, WORDS_MAX);
-    struct hamt_config *cfg = create_config(&hamt_allocator_default, my_keyhash_string, my_keycmp_string);
+    struct hamt_config *cfg = create_config(
+        &hamt_allocator_default, my_keyhash_string, my_keycmp_string);
     t = hamt_create(cfg);
     for (size_t i = 0; i < WORDS_MAX; i++) {
         hamt_set(t, words[i], words[i]);
@@ -484,7 +716,8 @@ MU_TEST_SUITE(test_setget_large_scale)
     words_load_numbers(&words, 0, n_items);
 
     struct hamt *t;
-    struct hamt_config *cfg = create_config(&hamt_allocator_default, my_keyhash_string, my_keycmp_string);
+    struct hamt_config *cfg = create_config(
+        &hamt_allocator_default, my_keyhash_string, my_keycmp_string);
     t = hamt_create(cfg);
     for (size_t i = 0; i < n_items; i++) {
         hamt_set(t, words[i], words[i]);
@@ -511,7 +744,8 @@ MU_TEST_CASE(test_shrink_table)
         {"0", 0, 1}, {"2", 2, 3}, {"4", 4, 4}, {"7", 7, 12}, {"8", 8, 22}};
 
     /* dummy struct hamt *so we can pass the allocator info */
-    struct hamt_config *cfg = create_config(&hamt_allocator_default, my_keyhash_string, my_keycmp_string);
+    struct hamt_config *cfg = create_config(
+        &hamt_allocator_default, my_keyhash_string, my_keycmp_string);
     struct hamt *t = hamt_create(cfg);
 
     /* create table w/ 5 entries and delete each position */
@@ -560,7 +794,8 @@ MU_TEST_CASE(test_gather_table)
     } data[N] = {{"0", 0, 1}, {"2", 2, 3}};
 
     /* dummy struct hamt *so we can pass the allocator info */
-    struct hamt_config *cfg = create_config(&hamt_allocator_default, my_keyhash_string, my_keycmp_string);
+    struct hamt_config *cfg = create_config(
+        &hamt_allocator_default, my_keyhash_string, my_keycmp_string);
     struct hamt *t = hamt_create(cfg);
 
     struct hamt_node *a0 = ALLOC(t->ator, sizeof(struct hamt_node));
@@ -592,7 +827,8 @@ MU_TEST_CASE(test_remove)
     } data[N] = {{"humpty", 1}, {"dumpty", 2}, {"sat", 3},
                  {"on", 4},     {"the", 5},    {"wall", 6}};
 
-    struct hamt_config *cfg = create_config(&hamt_allocator_default, my_keyhash_string, my_keycmp_string);
+    struct hamt_config *cfg = create_config(
+        &hamt_allocator_default, my_keyhash_string, my_keycmp_string);
     struct hamt *t = hamt_create(cfg);
 
     for (size_t k = 0; k < 3; ++k) {
@@ -625,7 +861,8 @@ MU_TEST_CASE(test_create_delete)
 {
     printf(". testing create/delete cycle\n");
     struct hamt *t;
-    struct hamt_config *cfg = create_config(&hamt_allocator_default, my_keyhash_string, my_keycmp_string);
+    struct hamt_config *cfg = create_config(
+        &hamt_allocator_default, my_keyhash_string, my_keycmp_string);
     t = hamt_create(cfg);
     hamt_delete(t);
 
@@ -649,7 +886,8 @@ MU_TEST_CASE(test_size)
 {
     printf(". testing tree size tracking\n");
     struct hamt *t;
-    struct hamt_config *cfg = create_config(&hamt_allocator_default, my_keyhash_string, my_keycmp_string);
+    struct hamt_config *cfg = create_config(
+        &hamt_allocator_default, my_keyhash_string, my_keycmp_string);
     t = hamt_create(cfg);
     enum { N = 6 };
     struct {
@@ -687,7 +925,8 @@ MU_TEST_CASE(test_iterators)
     } expected[6] = {{"the", 5}, {"on", 4},     {"wall", 6},
                      {"sat", 3}, {"humpty", 1}, {"dumpty", 2}};
 
-    struct hamt_config *cfg = create_config(&hamt_allocator_default, my_keyhash_string, my_keycmp_string);
+    struct hamt_config *cfg = create_config(
+        &hamt_allocator_default, my_keyhash_string, my_keycmp_string);
     t = hamt_create(cfg);
 
     /* test create/delete */
@@ -729,7 +968,8 @@ MU_TEST_CASE(test_iterators_1m)
     /* get the data */
     words_load_numbers(&words, 0, n_items);
     /* create and load the struct hamt **/
-    struct hamt_config *cfg = create_config(&hamt_allocator_default, my_keyhash_string, my_keycmp_string);
+    struct hamt_config *cfg = create_config(
+        &hamt_allocator_default, my_keyhash_string, my_keycmp_string);
     struct hamt *t = hamt_create(cfg);
     for (size_t i = 0; i < n_items; i++) {
         hamt_set(t, words[i], words[i]);
@@ -764,7 +1004,8 @@ MU_TEST_CASE(test_persistent_set)
     } data[6] = {{"humpty", 1}, {"dumpty", 2}, {"sat", 3},
                  {"on", 4},     {"the", 5},    {"wall", 6}};
 
-    struct hamt_config *cfg = create_config(&hamt_allocator_default, my_keyhash_string, my_keycmp_string);
+    struct hamt_config *cfg = create_config(
+        &hamt_allocator_default, my_keyhash_string, my_keycmp_string);
     const struct hamt *t = hamt_create(cfg);
     const struct hamt *tmp;
     for (size_t i = 0; i < 6; ++i) {
@@ -802,7 +1043,8 @@ MU_TEST_CASE(test_persistent_aspell_dict_en)
     const struct hamt *t;
 
     words_load(&words, WORDS_MAX);
-    struct hamt_config *cfg = create_config(&hamt_allocator_default, my_keyhash_string, my_keycmp_string);
+    struct hamt_config *cfg = create_config(
+        &hamt_allocator_default, my_keyhash_string, my_keycmp_string);
     t = hamt_create(cfg);
     for (size_t i = 0; i < WORDS_MAX; i++) {
         /* structural sharing */
@@ -823,7 +1065,8 @@ MU_TEST_CASE(test_persistent_aspell_dict_en)
 MU_TEST_CASE(test_table_extend)
 {
     printf(". testing table_extend\n");
-    struct hamt_config *cfg = create_config(&hamt_allocator_default, my_keyhash_string, my_keycmp_string);
+    struct hamt_config *cfg = create_config(
+        &hamt_allocator_default, my_keyhash_string, my_keycmp_string);
     struct hamt *t = hamt_create(cfg);
     MU_ASSERT(get_popcount(INDEX(t->root)) == 0,
               "root should have zero descendants");
@@ -859,7 +1102,8 @@ MU_TEST_CASE(test_setget_zero)
 
     /* create a standard HAMT with string keys */
     struct hamt *t;
-    struct hamt_config *cfg = create_config(&hamt_allocator_default, my_keyhash_string, my_keycmp_string);
+    struct hamt_config *cfg = create_config(
+        &hamt_allocator_default, my_keyhash_string, my_keycmp_string);
     t = hamt_create(cfg);
     /* Add a single key.
      *
@@ -867,8 +1111,8 @@ MU_TEST_CASE(test_setget_zero)
      * the compiler to align at a 64 bit boundary to make sure that the value
      * ponter we point to actually supports pointer tagging...
      */
-    char key[] __attribute__ ((aligned (8))) = "the_key";
-    char value[] __attribute__ ((aligned (8))) = "the_value";
+    char key[] __attribute__((aligned(8))) = "the_key";
+    char value[] __attribute__((aligned(8))) = "the_value";
 
     const char *val = hamt_set(t, key, value);
     MU_ASSERT(hamt_size(t) == 1, "wrong size after set");
@@ -897,12 +1141,13 @@ MU_TEST_CASE(test_persistent_setget_one)
     printf(". testing add/remove of a single element w/ structural sharing\n");
 
     /* create a standard HAMT with string keys */
-    struct hamt_config *cfg = create_config(&hamt_allocator_default, my_keyhash_string, my_keycmp_string);
+    struct hamt_config *cfg = create_config(
+        &hamt_allocator_default, my_keyhash_string, my_keycmp_string);
     const struct hamt *t;
     t = hamt_create(cfg);
     /* add a single key */
-    char key[] __attribute__ ((aligned (8))) = "the_key";
-    char value[] __attribute__ ((aligned (8))) = "the_value";
+    char key[] __attribute__((aligned(8))) = "the_key";
+    char value[] __attribute__((aligned(8))) = "the_value";
     t = hamt_pset(t, key, value);
     MU_ASSERT(hamt_size(t) == 1, "wrong size after set");
     /* make sure we can find it */
@@ -932,7 +1177,8 @@ MU_TEST_CASE(test_persistent_remove_aspell_dict_en)
     const struct hamt *t;
 
     words_load(&words, WORDS_MAX);
-    struct hamt_config *cfg = create_config(&hamt_allocator_default, my_keyhash_string, my_keycmp_string);
+    struct hamt_config *cfg = create_config(
+        &hamt_allocator_default, my_keyhash_string, my_keycmp_string);
     t = hamt_create(cfg);
     for (size_t i = 0; i < WORDS_MAX; i++) {
         /* structural sharing */
@@ -973,39 +1219,6 @@ MU_TEST_CASE(test_persistent_remove_aspell_dict_en)
     return 0;
 }
 
-static uint32_t my_keyhash_universal(const void *key, const size_t gen)
-{
-    return sedgewick_universal_hash((const char *)key, 0x8fffffff - (gen << 8));
-}
-
-#ifdef WITH_TABLE_CACHE
-#ifdef WITH_TABLE_CACHE_STATS
-static void print_allocation_stats(struct hamt *t)
-{
-    ptrdiff_t total_size = 0;
-    ptrdiff_t total_allocated_items = 0;
-    for (size_t l = 0; l < 32; ++l) {
-        total_size += t->cache->pools[l].size;
-        total_allocated_items += t->cache->pools[l].size * l;
-    }
-    printf("    Alloc overhead ratio: %f\n",
-           total_allocated_items / (float)t->size);
-    printf("    Pool allocator statistics:\n");
-    printf("       tsize    psize    psize%%   allocs    frees    fill%%  \n");
-    printf("      ------- --------- -------- -------- --------- -------\n");
-    for (size_t l = 0; l < 32; ++l) {
-        printf("      %6lu  %8lu  %5.2f%%  %7lu  %9lu  %4.2f%% \n", l + 1,
-               t->cache->pools[l].size,
-               100 * t->cache->pools[l].size / (float)total_size,
-               t->cache->pools[l].stats.alloc_count,
-               t->cache->pools[l].stats.free_count,
-               100 * (1.0 - (t->cache->pools[l].stats.free_count /
-                             (float)t->cache->pools[l].stats.alloc_count)));
-    }
-}
-#endif
-#endif
-
 MU_TEST_CASE(test_tree_depth)
 {
     printf(". creating tree statistics\n");
@@ -1021,7 +1234,8 @@ MU_TEST_CASE(test_tree_depth)
 
     for (size_t k = 0; k < 2; ++k) {
 
-        struct hamt_config *cfg = create_config(&hamt_allocator_default, hash_fns[k], my_keycmp_string);
+        struct hamt_config *cfg = create_config(&hamt_allocator_default,
+                                                hash_fns[k], my_keycmp_string);
         t = hamt_create(cfg);
         for (size_t i = 0; i < n_items; i++) {
             hamt_set(t, words[i], words[i]);
@@ -1076,6 +1290,17 @@ int mu_tests_run = 0;
 
 MU_TEST_SUITE(test_suite)
 {
+    /* hashing tests */
+    MU_RUN_TEST(test_murmur3_x86_32);
+
+    /* table cache tests */
+#if defined(WITH_TABLE_CACHE)
+    MU_RUN_TEST(cache_test_create_delete);
+    MU_RUN_TEST(cache_test_allocator_stride);
+    MU_RUN_TEST(cache_test_freelist_addressing);
+#endif
+
+    /* HAMT data structure tests */
     MU_RUN_TEST(test_aspell_dict_en);
     MU_RUN_TEST(test_popcount);
     MU_RUN_TEST(test_compact_index);
