@@ -183,7 +183,7 @@ hamt_table_cache_create(struct hamt_table_cache_config *cfg)
         sizeof *cache, cfg->backing_allocator->ctx);
     if (cache) {
         cache->backing_allocator = cfg->backing_allocator;
-        for (size_t i = 0; i < cfg->bucket_count; ++i) {
+        for (ptrdiff_t i = 0; i < cfg->bucket_count; ++i) {
             table_allocator_create(&cache->pools[i],
                                    cfg->initial_bucket_sizes[i], i + 1,
                                    cfg->backing_allocator);

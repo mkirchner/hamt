@@ -48,7 +48,7 @@ void stdlib_free(void *ptr, const ptrdiff_t size, void *ctx)
 }
 
 struct hamt_allocator hamt_allocator_default = {stdlib_malloc, stdlib_realloc,
-                                                stdlib_free};
+                                                stdlib_free, NULL};
 
 struct hamt {
     struct hamt_node *root;
@@ -565,6 +565,7 @@ static struct path_result rem(struct hamt *h, struct hamt_node *root,
                               struct hamt_node *anchor, struct hash_state *hash,
                               hamt_key_cmp_fn cmp_eq, const void *key)
 {
+    (void) root; /* silence unused warning */
     struct path_result pr;
     pr.root = table_allocate(h, 1);
     pr.rr = rem_recursive(h, pr.root, anchor, hash, cmp_eq, key, pr.root);
@@ -720,7 +721,7 @@ struct hamt_iterator *hamt_it_next(struct hamt_iterator *it)
     struct hamt_iterator_item *p;
     while (it && (p = iterator_peek_item(it)) != NULL) {
         /* determine number of entries / size of the table */
-        int n_pos = get_popcount(INDEX(p->anchor));
+        size_t n_pos = get_popcount(INDEX(p->anchor));
         /* start from the table index we left off from */
         while (p->pos < n_pos) {
             /* get a pointer to the current subtrie */

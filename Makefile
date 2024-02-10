@@ -31,7 +31,7 @@ endif
 # Compiler flags
 #
 CC     := gcc
-CFLAGS := -Wall $(INCFLAGS)  # -Werror -Wextra
+CFLAGS := -std=c11 -pedantic -Wall -Werror -Wextra $(INCFLAGS)
 
 #
 # Debug build settings

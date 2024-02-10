@@ -125,19 +125,12 @@ static int my_strncmp_1(const void *lhs, const void *rhs)
     return strncmp((const char *)lhs, (const char *)rhs, 1);
 }
 
-static uint32_t my_hash_1(const void *key, const size_t _)
+static uint32_t my_hash_1(const void *key, const size_t gen)
 {
-    /* ignore gen here */
+    (void) gen; /* ignore gen here */
     return murmur3_32((uint8_t *)key, 1, 0);
 }
 
-static void print_keys(int32_t hash)
-{
-    for (size_t i = 0; i < 6; ++i) {
-        uint32_t key = (hash >> (5 * i)) & 0x1f;
-        printf("%2d ", key);
-    }
-}
 static int my_keycmp_string(const void *lhs, const void *rhs)
 {
     /* expects lhs and rhs to be pointers to 0-terminated strings */
@@ -184,6 +177,7 @@ static void print_allocation_stats(struct hamt *t)
 }
 #endif
 #endif
+
 MU_TEST_CASE(test_murmur3_x86_32)
 {
     printf(". testing Murmur3 (x86, 32bit)\n");
@@ -211,6 +205,7 @@ MU_TEST_CASE(test_murmur3_x86_32)
     }
     return 0;
 }
+
 MU_TEST_CASE(cache_test_create_delete)
 {
     printf("Testing cache create/delete...\n");
@@ -222,7 +217,7 @@ MU_TEST_CASE(cache_test_create_delete)
 
     MU_ASSERT(cache->backing_allocator == &hamt_allocator_default,
               "backing allocator should point to default allocator");
-    for (size_t i = 0; i < 32; ++i) {
+    for (ptrdiff_t i = 0; i < 32; ++i) {
         MU_ASSERT(cache->pools[i].size == 0,
                   "initial number of allocations should be zero");
         MU_ASSERT(cache->pools[i].table_size == i + 1, "wrong table size");
@@ -258,7 +253,7 @@ MU_TEST_CASE(cache_test_allocator_stride)
         printf("  table size %lu, expected stride %lu, testing %lu tables\n",
                 i+1, expected_stride, tables_per_chunk);
         */
-        for (size_t j = 0; j < tables_per_chunk - 1; ++j) {
+        for (ptrdiff_t j = 0; j < tables_per_chunk - 1; ++j) {
             char *q = (char *)hamt_table_cache_alloc(cache, i + 1);
             MU_ASSERT(q - p == expected_stride, "wrong stride");
             p = q;
@@ -283,8 +278,8 @@ MU_TEST_CASE(cache_test_freelist_addressing)
         .initial_bucket_sizes = bucket_sizes};
 
     /* note: 1-based loops */
-    for (size_t n_rows = 1; n_rows < 33; ++n_rows) {
-        for (size_t n_chunks = 1; n_chunks < 5; ++n_chunks) {
+    for (ptrdiff_t n_rows = 1; n_rows < 33; ++n_rows) {
+        for (ptrdiff_t n_chunks = 1; n_chunks < 5; ++n_chunks) {
             /* create a new pool every time for isolated testing */
             struct hamt_table_cache *cache = hamt_table_cache_create(&cfg);
 
@@ -305,13 +300,13 @@ MU_TEST_CASE(cache_test_freelist_addressing)
 
             /* deplete the cache and trigger resize until hitting the correct
              * capacity */
-            for (size_t pi = 0; pi < n_pointers; ++pi) {
+            for (ptrdiff_t pi = 0; pi < n_pointers; ++pi) {
                 ptrs[pi] = hamt_table_cache_alloc(cache, n_rows);
             }
 
             /* make sure we created the correct number of chunks */
             struct table_allocator *ator = &cache->pools[n_rows - 1];
-            MU_ASSERT(ator->chunk_count == n_chunks,
+            MU_ASSERT(ator->chunk_count == (size_t) n_chunks,
                       "Invalid number of chunks");
 
             /* make sure the number of pointers corresponds to the cache size */
@@ -334,7 +329,7 @@ MU_TEST_CASE(cache_test_freelist_addressing)
             shuffle_ptr_array(n_pointers, (void **)ptrs);
 
             /* return all pointers to the freelist in shuffled order */
-            for (size_t pi = 0; pi < n_pointers; ++pi) {
+            for (ptrdiff_t pi = 0; pi < n_pointers; ++pi) {
                 hamt_table_cache_free(cache, n_rows, ptrs[pi]);
             }
 
@@ -376,7 +371,7 @@ MU_TEST_CASE(test_popcount)
     } test_cases[4] = {{0, 0}, {42, 3}, {1337, 6}, {UINT32_MAX, 32}};
 
     for (size_t i = 0; i < 4; ++i) {
-        MU_ASSERT(get_popcount(test_cases[i].number) == test_cases[i].nbits,
+        MU_ASSERT(get_popcount(test_cases[i].number) == (int) test_cases[i].nbits,
                   "Unexpected number of set bits");
     }
     return 0;
@@ -707,6 +702,7 @@ MU_TEST_CASE(test_aspell_dict_en)
     words_free(words, WORDS_MAX);
     return 0;
 }
+
 MU_TEST_SUITE(test_setget_large_scale)
 {
     printf(". testing set/get/get for 1M items\n");
@@ -993,6 +989,7 @@ MU_TEST_CASE(test_iterators_1m)
     delete_config(cfg);
     return 0;
 }
+
 MU_TEST_CASE(test_persistent_set)
 {
     printf(". testing set/insert w/ structural sharing\n");
@@ -1136,6 +1133,7 @@ MU_TEST_CASE(test_setget_zero)
     delete_config(cfg);
     return 0;
 }
+
 MU_TEST_CASE(test_persistent_setget_one)
 {
     printf(". testing add/remove of a single element w/ structural sharing\n");
@@ -1286,6 +1284,7 @@ MU_TEST_CASE(test_tree_depth)
     words_free(words, n_items);
     return 0;
 }
+
 int mu_tests_run = 0;
 
 MU_TEST_SUITE(test_suite)
