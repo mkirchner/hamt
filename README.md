@@ -28,14 +28,34 @@ $ git clone git@github.com:mkirchner/hamt.git
 $ cd hamt
 $ make
 $ make test
+$ make runtest
 ```
-
-In order to use `libhamt` in your own projects, copy `include/hamt.h` and
-`src/hamt.c` in your own source tree and build from there.
+In order to use `libhamt` in your own projects, copy the required sources to
+your own source tree.
 
 ### Benchmarks
 
-For basic performance comparison with AVL and red-black trees (from `libavl`)
+![Benchmark results](./doc/img/benchmark.png)
+
+The current HAMT implementation consistently outperforms the `libavl` AVL-tree
+and red-black tree implementations by 5x for querying, 1.5x-4x for node insert,
+and 1.5x-5x for node removal. Persistent insert and remove implementations
+scale roughly similar to the classic trees, with more favorable scaling
+behavior for HAMT. Where table caching is an option, the persistent HAMT
+implementation reaches better insert performance than red-black trees and 
+better removal performance than red-black and AVL trees at appoximately 10e5
+elements.
+
+Compared to hash tables, HAMT query times start at 2x vs. GLib's `HashTable`
+and 20x vs. `hsearch(3)` (the latter still being investigated) and then get
+progressively worse. This makes sense, given the O(1) vs. O(log N) expectations
+between the different approaches.
+
+Note that benchmarking and optimization is an ongoing effort and please take
+all numbers with a pinch of salt. All measurements have so far been collected
+on a single system (Apple MBP M2 Max under Ventura 13.4.1).
+
+For detailed performance comparison with AVL and red-black trees (from `libavl`)
 and the HashTree from GLib, see [the benchmarking repo][hamt_bench_github].
 
 

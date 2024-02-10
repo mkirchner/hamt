@@ -15,7 +15,7 @@ jobs:
     - name: Build libraries
       run: make
     - name: Build tests
-      run: make build_test
-    - name: Run tests
       run: make test
+    - name: Run tests
+      run: make runtest
   
